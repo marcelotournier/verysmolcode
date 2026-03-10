@@ -369,6 +369,16 @@
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
 
+## Completed (v0.13.0) — Telegram Bot & Scrolling Fix
+- [x] Telegram bot integration via @BotFather (/telegram setup, /telegram-test, /telegram-off)
+- [x] send_telegram tool: agent can message user for questions, answers, job completion
+- [x] Background polling thread receives Telegram messages, forwards to agent
+- [x] Dirty-flag rendering: only redraw when state changes (eliminates idle redraws)
+- [x] Arc<Vec<Line>> cache: O(1) clone instead of deep-copying all spans/strings
+- [x] Visible-slice rendering: only clone ~30 visible lines instead of all
+- [x] 4 performance regression tests for scrolling/rendering
+- [x] 433 unit tests total
+
 ## Completed (v0.12.6) — Performance Fix & Test Coverage
 - [x] Cached message rendering (no re-render on every frame)
 - [x] Eliminated per-frame Config::load() disk I/O
