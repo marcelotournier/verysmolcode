@@ -770,7 +770,7 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
 #[cfg(test)]
 impl App {
     /// Create an App without starting the agent (for unit tests)
-    fn test_new() -> Self {
+    pub(crate) fn test_new() -> Self {
         Self {
             input: String::new(),
             cursor_pos: 0,

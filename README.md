@@ -147,6 +147,7 @@ Default values:
 src/
   main.rs           - Entry point
   config.rs         - Configuration management
+  utils.rs          - Shared utilities (safe UTF-8 truncation)
   api/
     client.rs       - Gemini REST API client with fallback
     models.rs       - 6 model definitions, rate limiting, routing
@@ -174,7 +175,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (547 tests)
+# Unit tests (434+ tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)

@@ -91,6 +91,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         app.cursor_pos = pos;
                         app.update_suggestions();
                     }
+                    'l' => {
+                        app.clear_screen();
+                    }
                     _ => {}
                 }
             } else {
@@ -277,5 +280,146 @@ mod tests {
         let s = "/help something";
         assert_eq!(word_start(s, 15), 6); // delete "something"
         assert_eq!(word_start(s, 5), 0); // delete "/help"
+    }
+
+    #[test]
+    fn test_ctrl_l_clears_screen() {
+        let mut app = App::test_new();
+        app.messages
+            .push(crate::tui::app::DisplayMessage::User("hello".to_string()));
+        app.scroll_offset = 5;
+        let key = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert!(app.messages.is_empty());
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_ctrl_a_home() {
+        let mut app = App::test_new();
+        app.input = "hello".to_string();
+        app.cursor_pos = 5;
+        let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_ctrl_e_end() {
+        let mut app = App::test_new();
+        app.input = "hello".to_string();
+        app.cursor_pos = 0;
+        let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert_eq!(app.cursor_pos, 5);
+    }
+
+    #[test]
+    fn test_ctrl_u_clear_before_cursor() {
+        let mut app = App::test_new();
+        app.input = "hello world".to_string();
+        app.cursor_pos = 5;
+        let key = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, " world");
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_ctrl_k_clear_after_cursor() {
+        let mut app = App::test_new();
+        app.input = "hello world".to_string();
+        app.cursor_pos = 5;
+        let key = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, "hello");
+    }
+
+    #[test]
+    fn test_ctrl_w_delete_word() {
+        let mut app = App::test_new();
+        app.input = "hello world".to_string();
+        app.cursor_pos = 11;
+        let key = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, "hello ");
+        assert_eq!(app.cursor_pos, 6);
+    }
+
+    #[test]
+    fn test_backspace() {
+        let mut app = App::test_new();
+        app.input = "hello".to_string();
+        app.cursor_pos = 5;
+        let key = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, "hell");
+        assert_eq!(app.cursor_pos, 4);
+    }
+
+    #[test]
+    fn test_delete_key() {
+        let mut app = App::test_new();
+        app.input = "hello".to_string();
+        app.cursor_pos = 0;
+        let key = KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, "ello");
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_left_right_arrows() {
+        let mut app = App::test_new();
+        app.input = "hi".to_string();
+        app.cursor_pos = 2;
+
+        let left = KeyEvent::new(KeyCode::Left, KeyModifiers::NONE);
+        handle_key(&mut app, left);
+        assert_eq!(app.cursor_pos, 1);
+
+        let right = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
+        handle_key(&mut app, right);
+        assert_eq!(app.cursor_pos, 2);
+    }
+
+    #[test]
+    fn test_home_end_keys() {
+        let mut app = App::test_new();
+        app.input = "hello".to_string();
+        app.cursor_pos = 3;
+
+        let home = KeyEvent::new(KeyCode::Home, KeyModifiers::NONE);
+        handle_key(&mut app, home);
+        assert_eq!(app.cursor_pos, 0);
+
+        let end = KeyEvent::new(KeyCode::End, KeyModifiers::NONE);
+        handle_key(&mut app, end);
+        assert_eq!(app.cursor_pos, 5);
+    }
+
+    #[test]
+    fn test_esc_dismisses_suggestions() {
+        let mut app = App::test_new();
+        app.command_suggestions = vec![("/help".to_string(), "Help".to_string())];
+        app.suggestion_index = Some(0);
+
+        let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        handle_key(&mut app, esc);
+        assert!(app.command_suggestions.is_empty());
+        assert!(app.suggestion_index.is_none());
+    }
+
+    #[test]
+    fn test_input_blocked_during_processing() {
+        let mut app = App::test_new();
+        app.is_processing = true;
+        app.input = "before".to_string();
+        app.cursor_pos = 6;
+
+        // Typing should be blocked
+        let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, "before");
     }
 }

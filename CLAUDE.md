@@ -214,6 +214,13 @@
 - [x] 12 new tests for new safety patterns
 - [x] 434 unit tests
 
+## Completed (v0.10.1)
+- [x] Ctrl+L keybinding: clears screen (was listed in help but not implemented)
+- [x] 12 new handle_key tests: Ctrl+A/E/U/K/W/L, Backspace, Delete, Left/Right, Home/End, Esc, input blocked during processing
+- [x] App::test_new() made pub(crate) for cross-module test access
+- [x] README: updated test count, added utils.rs to architecture
+- [x] 458 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
