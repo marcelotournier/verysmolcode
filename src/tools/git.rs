@@ -1,3 +1,4 @@
+use crate::utils::safe_truncate;
 use serde_json::{json, Value};
 use std::process::Command;
 use std::time::Duration;
@@ -60,16 +61,17 @@ fn run_git(args: &[&str]) -> Value {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    let max_output = 10_000;
                     if output.status.success() {
                         json!({
                             "success": true,
-                            "output": stdout.trim()
+                            "output": safe_truncate(stdout.trim(), max_output)
                         })
                     } else {
                         json!({
                             "success": false,
-                            "error": stderr.trim(),
-                            "output": stdout.trim()
+                            "error": safe_truncate(stderr.trim(), max_output),
+                            "output": safe_truncate(stdout.trim(), max_output)
                         })
                     }
                 }
@@ -218,35 +220,21 @@ pub fn run_shell(args: &Value) -> Value {
     };
 
     match child {
-        Ok(child) => {
-            match run_command_with_timeout(child, Duration::from_secs(timeout_secs)) {
-                Ok(output) => {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    // Truncate long output at safe char boundaries
-                    let max_len = 10_000;
-                    let truncate = |s: &str| -> String {
-                        if s.len() > max_len {
-                            let mut end = max_len;
-                            while end > 0 && !s.is_char_boundary(end) {
-                                end -= 1;
-                            }
-                            format!("{}...(truncated)", &s[..end])
-                        } else {
-                            s.to_string()
-                        }
-                    };
+        Ok(child) => match run_command_with_timeout(child, Duration::from_secs(timeout_secs)) {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let max_len = 10_000;
 
-                    json!({
-                        "success": output.status.success(),
-                        "exit_code": output.status.code(),
-                        "stdout": truncate(stdout.trim()),
-                        "stderr": truncate(stderr.trim())
-                    })
-                }
-                Err(e) => json!({"error": e}),
+                json!({
+                    "success": output.status.success(),
+                    "exit_code": output.status.code(),
+                    "stdout": safe_truncate(stdout.trim(), max_len),
+                    "stderr": safe_truncate(stderr.trim(), max_len)
+                })
             }
-        }
+            Err(e) => json!({"error": e}),
+        },
         Err(e) => json!({"error": format!("Failed to run command: {}", e)}),
     }
 }
@@ -451,5 +439,35 @@ mod tests {
     fn test_git_push_with_remote_and_branch() {
         let result = git_push(&json!({"remote": "origin", "branch": "test-branch"}));
         assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_safe_truncate_short() {
+        assert_eq!(safe_truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_safe_truncate_exact() {
+        assert_eq!(safe_truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_safe_truncate_truncates() {
+        let result = safe_truncate("hello world", 5);
+        assert_eq!(result, "hello...(truncated)");
+    }
+
+    #[test]
+    fn test_safe_truncate_multibyte() {
+        // "a😀b" = 1 + 4 + 1 = 6 bytes; truncate at 3 should back up to byte 1
+        let s = "a\u{1F600}b";
+        let result = safe_truncate(s, 3);
+        assert!(result.starts_with("a"));
+        assert!(result.ends_with("...(truncated)"));
+    }
+
+    #[test]
+    fn test_safe_truncate_empty() {
+        assert_eq!(safe_truncate("", 10), "");
     }
 }

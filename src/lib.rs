@@ -6,6 +6,7 @@ pub mod config;
 pub mod mcp;
 pub mod tools;
 pub mod tui;
+pub mod utils;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

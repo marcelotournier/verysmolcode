@@ -191,6 +191,12 @@
 - [x] Undo history committed before critic (prevents data loss on critic failure)
 - [x] stderr truncation in run_command (prevents token bloat from verbose output)
 
+## Completed (v0.9.8)
+- [x] Shared utils module: safe_truncate() extracted from 4 duplicate implementations
+- [x] DRYed run_shell() truncation to use shared safe_truncate() helper
+- [x] 6 tests for utils::safe_truncate + 5 tests for git::safe_truncate edge cases
+- [x] 385 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
