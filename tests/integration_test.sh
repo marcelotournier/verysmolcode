@@ -84,7 +84,7 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     # Capture tmux screen for debugging
     if [ $((ELAPSED % 30)) -eq 0 ]; then
         echo "--- tmux screen capture ---"
-        tmux capture-pane -t "$SESSION" -p 2>/dev/null | tail -15
+        tmux capture-pane -t "$SESSION" -p 2>/dev/null
         echo "--- end capture ---"
     fi
 

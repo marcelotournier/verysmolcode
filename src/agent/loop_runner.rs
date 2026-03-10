@@ -85,8 +85,8 @@ impl AgentLoop {
             ToolRegistry::declarations()
         };
 
-        // Add Google Search grounding
-        tools.push(ToolDeclaration::google_search());
+        // NOTE: Google Search grounding disabled for now - may not work on free tier
+        // tools.push(ToolDeclaration::google_search());
 
         // Add MCP tool declarations
         if !self.mcp_clients.is_empty() {

@@ -201,7 +201,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let left = if !app.rate_status.is_empty() {
         app.rate_status.clone()
     } else {
-        "VerySmolCode v0.1.0".to_string()
+        format!("VerySmolCode v{}", env!("CARGO_PKG_VERSION"))
     };
 
     let right = if !app.status_line.is_empty() {
