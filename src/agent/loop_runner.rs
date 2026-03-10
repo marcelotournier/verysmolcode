@@ -521,14 +521,14 @@ impl AgentLoop {
             });
         }
 
+        // Commit undo history BEFORE critic (so /undo works even if critic errors out)
+        self.undo_history.commit_turn();
+
         // Run critic check only if files were actually modified (saves API calls)
         // Skip critic for read-only operations, planning mode, or when no budget
         if !self.planning_mode && had_tool_calls && self.files_modified {
             self.run_critic(user_input, &mut on_event)?;
         }
-
-        // Commit undo history for this turn
-        self.undo_history.commit_turn();
 
         Ok(())
     }
