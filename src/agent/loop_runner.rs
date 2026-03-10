@@ -41,7 +41,7 @@ pub struct AgentLoop {
 const MAX_TOOL_RESULT_CHARS: usize = 8000;
 
 /// Truncate a tool result JSON to save tokens
-fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
+pub fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
     let s = result.to_string();
     if s.len() <= MAX_TOOL_RESULT_CHARS {
         return result.clone();
@@ -77,7 +77,7 @@ fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
 
 /// Strip thinking/thought parts from conversation history to save tokens on resend.
 /// Thinking tokens are useful for the model's reasoning but shouldn't be sent back.
-fn strip_thinking_from_history(conversation: &mut [Content]) {
+pub fn strip_thinking_from_history(conversation: &mut [Content]) {
     for content in conversation.iter_mut() {
         content
             .parts
@@ -647,7 +647,7 @@ pub enum AgentEvent {
 }
 
 /// Check if an error indicates rate limiting or overload
-fn is_rate_limit_error(e: &str) -> bool {
+pub fn is_rate_limit_error(e: &str) -> bool {
     e.contains("429")
         || e.contains("rate")
         || e.contains("quota")
@@ -656,7 +656,7 @@ fn is_rate_limit_error(e: &str) -> bool {
 }
 
 /// Check if a tool call looks dangerous
-fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
+pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
     match name {
         "run_command" => {
             if let Some(cmd) = args.get("command").and_then(|v| v.as_str()) {
