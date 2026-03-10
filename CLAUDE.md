@@ -146,6 +146,17 @@
 - [x] Deduplicated system prompt construction (MCP + todo injection shared between modes)
 - [x] 239 unit tests
 
+## Completed (v0.9.3)
+- [x] Massive test coverage expansion: 239 → 483 tests
+- [x] New inline test modules: ui.rs (wrap_text), grep.rs (is_likely_binary, collect_files), file_ops.rs (24 tests)
+- [x] grep.rs: include filters, max_results, hidden dir/node_modules skipping, binary detection
+- [x] file_ops.rs: safe path checks, file truncation, edit ambiguity, dir sorting, image MIME types
+- [x] git.rs: all blocked command patterns (sudo rm, chmod 777, mkfs, rm -rf ~)
+- [x] web.rs: localhost/127.0.0.1/0.0.0.0 blocking, HTML stripping edge cases
+- [x] test_agent.rs: is_dangerous_tool_call for /usr, /bin, /sbin, /lib, /proc, /sys
+- [x] test_api.rs: Pro/FlashLite thinking budgets, fallback chain end, record_request
+- [x] test_commands.rs: config set (max_tokens, compact_threshold, safety), /retry, /todo aliases
+
 # Lessons Learned
 
 ## TLS Crate Selection
