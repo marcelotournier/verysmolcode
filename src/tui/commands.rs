@@ -90,7 +90,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
                 if set_args.len() < 2 {
                     return CommandResponse::Message(
                         "Usage: /config set <key> <value>\n\
-                         Keys: temperature, max_tokens, compact_threshold, safety"
+                         Keys: temperature, max_tokens, compact_threshold, command_timeout, safety"
                             .to_string(),
                     );
                 }
@@ -125,6 +125,14 @@ pub fn handle_command(input: &str) -> CommandResponse {
                             )
                         })
                         .map_err(|_| "Invalid number".to_string()),
+                    "command_timeout" | "timeout" => val
+                        .parse::<u64>()
+                        .map(|v| {
+                            config.command_timeout = v.clamp(5, 600);
+                            crate::tools::git::set_command_timeout_secs(config.command_timeout);
+                            format!("Command timeout set to {}s", config.command_timeout)
+                        })
+                        .map_err(|_| "Invalid number".to_string()),
                     "safety" => match val {
                         "on" | "true" | "enabled" => {
                             config.safety_enabled = true;
@@ -156,14 +164,16 @@ pub fn handle_command(input: &str) -> CommandResponse {
                      Max conversation tokens: {}\n\
                      Temperature: {}\n\
                      Auto-compact threshold: {}\n\
+                     Command timeout: {}s\n\
                      Safety checks: {}\n\
                      \n\
                      Use /config set <key> <value> to change.\n\
-                     Keys: temperature, max_tokens, compact_threshold, safety",
+                     Keys: temperature, max_tokens, compact_threshold, command_timeout, safety",
                     config.max_tokens_per_response,
                     config.max_conversation_tokens,
                     config.temperature,
                     config.auto_compact_threshold,
+                    config.command_timeout,
                     if config.safety_enabled {
                         "enabled"
                     } else {

@@ -240,6 +240,15 @@
 - [x] HTML stripper refactored with generic hidden-tag system (script + style)
 - [x] 2 new tests: style stripping, case-insensitive STYLE tags
 
+## Completed (v0.10.4)
+- [x] Configurable command timeout: `/config set command_timeout 120` (5-600s range)
+- [x] Atomic-based timeout sharing (no mutex needed, thread-safe)
+- [x] edit_file diagnostic hints: whitespace mismatch, case mismatch, or "read first"
+- [x] MCP tool errors now include source server name for debugging
+- [x] Timeout initialized from config at AgentLoop startup
+- [x] 4 new tests: edit hints (whitespace, case, fallback), set_command_timeout
+- [x] 441 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection

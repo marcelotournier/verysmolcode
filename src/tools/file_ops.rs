@@ -109,7 +109,20 @@ pub fn edit_file(args: &Value) -> Value {
         Ok(content) => {
             let count = content.matches(old_string).count();
             if count == 0 {
-                return json!({"error": "old_string not found in file"});
+                // Check if it's a whitespace mismatch (tabs vs spaces)
+                let normalized_content = content.replace('\t', "    ");
+                let normalized_old = old_string.replace('\t', "    ");
+                let hint = if normalized_content.contains(&normalized_old) {
+                    "Hint: found match with different whitespace (tabs vs spaces)"
+                } else if content.to_lowercase().contains(&old_string.to_lowercase()) {
+                    "Hint: found case-insensitive match — check exact casing"
+                } else {
+                    "Read the file first to see its current content"
+                };
+                return json!({
+                    "error": "old_string not found in file",
+                    "hint": hint
+                });
             }
             if count > 1 {
                 // Show line numbers of each match so the model can provide more context
@@ -400,6 +413,38 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].as_u64().unwrap(), 1);
         assert_eq!(lines[1].as_u64().unwrap(), 3);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_edit_file_hint_whitespace_mismatch() {
+        let path = "/tmp/vsc_test_edit_ws.txt";
+        fs::write(path, "\thello world").unwrap();
+        let result =
+            edit_file(&json!({"path": path, "old_string": "    hello world", "new_string": "x"}));
+        let hint = result["hint"].as_str().unwrap();
+        assert!(hint.contains("whitespace"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_edit_file_hint_case_mismatch() {
+        let path = "/tmp/vsc_test_edit_case.txt";
+        fs::write(path, "Hello World").unwrap();
+        let result =
+            edit_file(&json!({"path": path, "old_string": "hello world", "new_string": "x"}));
+        let hint = result["hint"].as_str().unwrap();
+        assert!(hint.contains("case"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_edit_file_hint_read_first() {
+        let path = "/tmp/vsc_test_edit_readfirst.txt";
+        fs::write(path, "abc def").unwrap();
+        let result = edit_file(&json!({"path": path, "old_string": "xyz123", "new_string": "x"}));
+        let hint = result["hint"].as_str().unwrap();
+        assert!(hint.contains("Read the file"));
         let _ = fs::remove_file(path);
     }
 

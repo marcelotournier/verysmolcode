@@ -9,6 +9,12 @@ pub struct Config {
     pub auto_compact_threshold: u32,
     pub system_prompt: String,
     pub safety_enabled: bool,
+    #[serde(default = "default_command_timeout")]
+    pub command_timeout: u64,
+}
+
+fn default_command_timeout() -> u64 {
+    60
 }
 
 impl Default for Config {
@@ -20,6 +26,7 @@ impl Default for Config {
             auto_compact_threshold: 24000,
             system_prompt: default_system_prompt(),
             safety_enabled: true,
+            command_timeout: default_command_timeout(),
         }
     }
 }

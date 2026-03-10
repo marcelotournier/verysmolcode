@@ -159,9 +159,13 @@ impl AgentLoop {
             }
         }
 
+        let config = Config::load();
+        // Apply configured command timeout
+        crate::tools::git::set_command_timeout_secs(config.command_timeout);
+
         Ok(Self {
             client: GeminiClient::new()?,
-            config: Config::load(),
+            config,
             conversation: Vec::new(),
             total_conversation_tokens: 0,
             planning_mode: false,
@@ -231,7 +235,11 @@ impl AgentLoop {
                 // Found the right client, call the tool
                 return match client.call_tool(tool_name, args.clone()) {
                     Ok(result) => Some(result),
-                    Err(e) => Some(serde_json::json!({"error": e})),
+                    Err(e) => Some(serde_json::json!({
+                        "error": format!("MCP tool failed: {}", e),
+                        "source": "mcp",
+                        "server": client.name()
+                    })),
                 };
             }
         }

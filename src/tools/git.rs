@@ -1,10 +1,12 @@
 use crate::utils::safe_truncate;
 use serde_json::{json, Value};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 /// Default timeout for shell commands (seconds)
-const COMMAND_TIMEOUT_SECS: u64 = 60;
+const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 60;
+static COMMAND_TIMEOUT: AtomicU64 = AtomicU64::new(DEFAULT_COMMAND_TIMEOUT_SECS);
 
 /// Run a command with a timeout, returning stdout/stderr or a timeout error
 fn run_command_with_timeout(
@@ -57,7 +59,10 @@ fn run_git(args: &[&str]) -> Value {
 
     match child {
         Ok(child) => {
-            match run_command_with_timeout(child, Duration::from_secs(COMMAND_TIMEOUT_SECS)) {
+            match run_command_with_timeout(
+                child,
+                Duration::from_secs(COMMAND_TIMEOUT.load(Ordering::Relaxed)),
+            ) {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -170,9 +175,14 @@ pub fn git_pull(args: &Value) -> Value {
     run_git(&["pull", remote])
 }
 
-/// Visible for testing
+/// Get the current command timeout in seconds
 pub fn command_timeout_secs() -> u64 {
-    COMMAND_TIMEOUT_SECS
+    COMMAND_TIMEOUT.load(Ordering::Relaxed)
+}
+
+/// Set the command timeout (called from config)
+pub fn set_command_timeout_secs(secs: u64) {
+    COMMAND_TIMEOUT.store(secs.clamp(5, 600), Ordering::Relaxed);
 }
 
 pub fn run_shell(args: &Value) -> Value {
@@ -206,7 +216,7 @@ pub fn run_shell(args: &Value) -> Value {
     let timeout_secs = args
         .get("timeout")
         .and_then(|v| v.as_u64())
-        .unwrap_or(COMMAND_TIMEOUT_SECS);
+        .unwrap_or_else(|| COMMAND_TIMEOUT.load(Ordering::Relaxed));
 
     let child = if cfg!(target_os = "windows") {
         Command::new("cmd")
@@ -504,5 +514,22 @@ mod tests {
     fn test_run_shell_blocked_redirect_boot() {
         let result = run_shell(&json!({"command": "echo x > /boot/grub.cfg"}));
         assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_set_command_timeout() {
+        // Save original
+        let original = command_timeout_secs();
+        // Set new timeout
+        set_command_timeout_secs(120);
+        assert_eq!(command_timeout_secs(), 120);
+        // Clamp to max 600
+        set_command_timeout_secs(9999);
+        assert_eq!(command_timeout_secs(), 600);
+        // Clamp to min 5
+        set_command_timeout_secs(1);
+        assert_eq!(command_timeout_secs(), 5);
+        // Restore original
+        set_command_timeout_secs(original);
     }
 }
