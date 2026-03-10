@@ -9,6 +9,9 @@ pub struct McpClient {
     name: String,
     request_id: u64,
     pub tools: Vec<McpTool>,
+    /// Last stderr output captured from the server (for diagnostics)
+    last_stderr: std::sync::Arc<std::sync::Mutex<String>>,
+    _stderr_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl McpClient {
@@ -25,15 +28,36 @@ impl McpClient {
             cmd.env(key, value);
         }
 
-        let process = cmd
+        let mut process = cmd
             .spawn()
             .map_err(|e| format!("Failed to start MCP server '{}': {}", config.name, e))?;
+
+        // Drain stderr in a background thread to prevent pipe buffer deadlock
+        let last_stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let stderr_buf = last_stderr.clone();
+        let stderr_thread = process.stderr.take().map(|stderr| {
+            std::thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    if let Ok(mut buf) = stderr_buf.lock() {
+                        // Keep only last 2KB of stderr to avoid memory growth
+                        if buf.len() > 2048 {
+                            buf.clear();
+                        }
+                        buf.push_str(&line);
+                        buf.push('\n');
+                    }
+                }
+            })
+        });
 
         let mut client = Self {
             process,
             name: config.name.clone(),
             request_id: 0,
             tools: Vec::new(),
+            last_stderr,
+            _stderr_thread: stderr_thread,
         };
 
         // Initialize the connection
@@ -80,7 +104,16 @@ impl McpClient {
         loop {
             line.clear();
             match reader.read_line(&mut line) {
-                Ok(0) => return Err("MCP server closed connection".to_string()),
+                Ok(0) => {
+                    let stderr_info = self
+                        .last_stderr
+                        .lock()
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                        .map(|s| format!(" (stderr: {})", s.trim()))
+                        .unwrap_or_default();
+                    return Err(format!("MCP server closed connection{}", stderr_info));
+                }
                 Ok(_) => {
                     let trimmed = line.trim();
                     if trimmed.is_empty() {
