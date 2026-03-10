@@ -4,10 +4,25 @@ build-backend = "maturin"
 
 [project]
 name = "verysmolcode"
+description = "A lightweight TUI coding assistant using Gemini API free tier"
 requires-python = ">=3.8"
+license = "MIT"
+readme = "README.md"
+keywords = ["coding-assistant", "gemini", "tui", "ai"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Software Development :: Code Generators",
 ]
 dynamic = ["version"]
+
+[project.scripts]
+vsc = "verysmolcode:run"
+
+[tool.maturin]
+features = ["python"]
