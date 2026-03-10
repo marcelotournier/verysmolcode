@@ -106,6 +106,19 @@
 - [x] Critic notifies user when skipped due to rate limits
 - [x] 218 unit tests
 
+## Completed (v0.8.5)
+- [x] Fixed multi-Python wheel CI (--find-links instead of glob install)
+- [x] Python 3.11/3.12/3.13 wheels all build and publish successfully
+
+## Completed (v0.9.0)
+- [x] Command autocomplete popup (type / to see commands, arrows to navigate, Tab/Enter to select)
+- [x] CLI prompt mode: vsc -p "prompt" (like claude -p), supports piped stdin
+- [x] CLI flags: --version/-v, --help/-h
+- [x] Friendlier TUI: emoji header/status, ASCII art welcome, warmer placeholders
+- [x] Friendlier system prompt with personality (emojis in agent responses)
+- [x] System prompt encourages MCP tools usage (context7) for library docs lookup
+- [x] 226 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
