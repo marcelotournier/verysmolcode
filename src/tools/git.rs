@@ -1,22 +1,79 @@
 use serde_json::{json, Value};
 use std::process::Command;
+use std::time::Duration;
+
+/// Default timeout for shell commands (seconds)
+const COMMAND_TIMEOUT_SECS: u64 = 60;
+
+/// Run a command with a timeout, returning stdout/stderr or a timeout error
+fn run_command_with_timeout(
+    mut child: std::process::Child,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Process finished — collect output
+                let mut stdout = Vec::new();
+                let mut stderr = Vec::new();
+                if let Some(mut out) = child.stdout.take() {
+                    use std::io::Read;
+                    let _ = out.read_to_end(&mut stdout);
+                }
+                if let Some(mut err) = child.stderr.take() {
+                    use std::io::Read;
+                    let _ = err.read_to_end(&mut stderr);
+                }
+                return Ok(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            Ok(None) => {
+                // Still running
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait(); // reap zombie
+                    return Err(format!("Command timed out after {}s", timeout.as_secs()));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => {
+                return Err(format!("Error waiting for process: {}", e));
+            }
+        }
+    }
+}
 
 fn run_git(args: &[&str]) -> Value {
-    match Command::new("git").args(args).output() {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            if output.status.success() {
-                json!({
-                    "success": true,
-                    "output": stdout.trim()
-                })
-            } else {
-                json!({
-                    "success": false,
-                    "error": stderr.trim(),
-                    "output": stdout.trim()
-                })
+    let child = Command::new("git")
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+
+    match child {
+        Ok(child) => {
+            match run_command_with_timeout(child, Duration::from_secs(COMMAND_TIMEOUT_SECS)) {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    if output.status.success() {
+                        json!({
+                            "success": true,
+                            "output": stdout.trim()
+                        })
+                    } else {
+                        json!({
+                            "success": false,
+                            "error": stderr.trim(),
+                            "output": stdout.trim()
+                        })
+                    }
+                }
+                Err(e) => json!({"error": e}),
             }
         }
         Err(e) => json!({"error": format!("Failed to run git: {}", e)}),
@@ -111,6 +168,11 @@ pub fn git_pull(args: &Value) -> Value {
     run_git(&["pull", remote])
 }
 
+/// Visible for testing
+pub fn command_timeout_secs() -> u64 {
+    COMMAND_TIMEOUT_SECS
+}
+
 pub fn run_shell(args: &Value) -> Value {
     let command = match args.get("command").and_then(|v| v.as_str()) {
         Some(c) => c,
@@ -134,25 +196,202 @@ pub fn run_shell(args: &Value) -> Value {
         }
     }
 
-    match Command::new("sh").arg("-c").arg(command).output() {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            // Truncate long output
-            let max_len = 10_000;
-            let stdout_str = if stdout.len() > max_len {
-                format!("{}...(truncated)", &stdout[..max_len])
-            } else {
-                stdout.to_string()
-            };
+    let timeout_secs = args
+        .get("timeout")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(COMMAND_TIMEOUT_SECS);
 
-            json!({
-                "success": output.status.success(),
-                "exit_code": output.status.code(),
-                "stdout": stdout_str.trim(),
-                "stderr": stderr.trim()
-            })
+    let child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+
+    match child {
+        Ok(child) => {
+            match run_command_with_timeout(child, Duration::from_secs(timeout_secs)) {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    // Truncate long output
+                    let max_len = 10_000;
+                    let stdout_str = if stdout.len() > max_len {
+                        format!("{}...(truncated)", &stdout[..max_len])
+                    } else {
+                        stdout.to_string()
+                    };
+
+                    json!({
+                        "success": output.status.success(),
+                        "exit_code": output.status.code(),
+                        "stdout": stdout_str.trim(),
+                        "stderr": stderr.trim()
+                    })
+                }
+                Err(e) => json!({"error": e}),
+            }
         }
         Err(e) => json!({"error": format!("Failed to run command: {}", e)}),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_timeout_default() {
+        assert_eq!(command_timeout_secs(), 60);
+    }
+
+    #[test]
+    fn test_git_status_returns_json() {
+        let result = git_status(&json!({}));
+        // Should have either "success" or "error" key
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_log_default_count() {
+        let result = git_log(&json!({}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_log_custom_count() {
+        let result = git_log(&json!({"count": 3}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_diff_unstaged() {
+        let result = git_diff(&json!({}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_diff_staged() {
+        let result = git_diff(&json!({"staged": true}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_commit_no_message() {
+        let result = git_commit(&json!({}));
+        assert!(result.get("error").is_some());
+        assert!(result["error"].as_str().unwrap().contains("Missing"));
+    }
+
+    #[test]
+    fn test_git_add_no_files() {
+        let result = git_add(&json!({}));
+        assert!(result.get("error").is_some());
+        assert!(result["error"].as_str().unwrap().contains("Missing"));
+    }
+
+    #[test]
+    fn test_git_checkout_no_branch() {
+        let result = git_checkout(&json!({}));
+        assert!(result.get("error").is_some());
+        assert!(result["error"].as_str().unwrap().contains("Missing"));
+    }
+
+    #[test]
+    fn test_run_shell_no_command() {
+        let result = run_shell(&json!({}));
+        assert!(result.get("error").is_some());
+        assert!(result["error"].as_str().unwrap().contains("Missing"));
+    }
+
+    #[test]
+    fn test_run_shell_echo() {
+        let result = run_shell(&json!({"command": "echo hello"}));
+        assert_eq!(result["success"], true);
+        assert_eq!(result["stdout"], "hello");
+    }
+
+    #[test]
+    fn test_run_shell_blocked_rm_rf() {
+        let result = run_shell(&json!({"command": "rm -rf /"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_fork_bomb() {
+        let result = run_shell(&json!({"command": ":(){ :|:& };:"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_dd() {
+        let result = run_shell(&json!({"command": "dd if=/dev/zero of=/dev/sda"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_timeout() {
+        let result = run_shell(&json!({"command": "sleep 10", "timeout": 1}));
+        assert!(result.get("error").is_some());
+        assert!(result["error"].as_str().unwrap().contains("timed out"));
+    }
+
+    #[test]
+    fn test_run_shell_custom_timeout() {
+        let result = run_shell(&json!({"command": "echo fast", "timeout": 5}));
+        assert_eq!(result["success"], true);
+    }
+
+    #[test]
+    fn test_run_shell_exit_code() {
+        let result = run_shell(&json!({"command": "exit 42"}));
+        assert_eq!(result["success"], false);
+        assert_eq!(result["exit_code"], 42);
+    }
+
+    #[test]
+    fn test_run_shell_stderr() {
+        let result = run_shell(&json!({"command": "echo err >&2"}));
+        assert_eq!(result["stderr"], "err");
+    }
+
+    #[test]
+    fn test_run_command_with_timeout_success() {
+        let child = Command::new("echo")
+            .arg("test")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let result = run_command_with_timeout(child, Duration::from_secs(5));
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.status.success());
+    }
+
+    #[test]
+    fn test_run_command_with_timeout_kills() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let result = run_command_with_timeout(child, Duration::from_secs(1));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timed out"));
+    }
+
+    #[test]
+    fn test_git_branch_list() {
+        let result = git_branch(&json!({}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_push_default_remote() {
+        // Will fail since no remote configured in test env, but should not panic
+        let result = git_push(&json!({}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
     }
 }
