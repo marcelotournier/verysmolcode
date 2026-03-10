@@ -123,10 +123,14 @@ fn is_likely_binary(path: &Path) -> bool {
         }
     }
 
-    // Check first few bytes for null bytes
-    if let Ok(bytes) = fs::read(path) {
-        let check_len = bytes.len().min(512);
-        return bytes[..check_len].contains(&0);
+    // Check first few bytes for null bytes (read only 512 bytes, not the whole file)
+    if let Ok(file) = fs::File::open(path) {
+        use std::io::Read;
+        let mut buf = [0u8; 512];
+        let mut reader = std::io::BufReader::new(file);
+        if let Ok(n) = reader.read(&mut buf) {
+            return buf[..n].contains(&0);
+        }
     }
 
     false
