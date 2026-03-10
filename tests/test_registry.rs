@@ -7,7 +7,7 @@ use verysmolcode::tools::registry::{execute_tool, get_tool_declarations, ToolReg
 fn test_declarations_count() {
     let decls = ToolRegistry::declarations();
     assert_eq!(decls.len(), 1); // One ToolDeclaration with all function decls
-    assert_eq!(decls[0].function_declarations.len(), 18); // 18 tools
+    assert_eq!(decls[0].function_declarations.len(), 19); // 19 tools
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn test_read_only_declarations() {
 #[test]
 fn test_read_only_count() {
     let decls = ToolRegistry::read_only_declarations();
-    assert_eq!(decls[0].function_declarations.len(), 9); // 9 read-only tools
+    assert_eq!(decls[0].function_declarations.len(), 10); // 10 read-only tools (includes todo_update for planning)
 }
 
 // -- execute_tool tests --

@@ -128,6 +128,24 @@
 - [x] MCP-aware system prompt (lists servers/tools, encourages context7 for docs)
 - [x] 228 unit tests
 
+## Completed (v0.9.2)
+- [x] TodoList system for agent task tracking (like Claude Code)
+  - Agent uses todo_update tool to create/manage task lists during complex work
+  - Task state injected into system prompt every turn (model never loses focus)
+  - /todo command shows current task list to user
+  - 12 unit tests for TodoList
+- [x] Enhanced code reviewer (replaces shallow critic)
+  - Uses actual git diff context (up to 3000 chars) for review
+  - Structured review checklist: correctness, bugs, completeness, style
+  - Outputs APPROVED or NEEDS_WORK with specific feedback
+- [x] Enhanced plan mode (/plan)
+  - Thorough planning prompt with architecture decisions, testing plan, risk analysis
+  - Planning mode creates todo list from steps (todo_update available in read-only mode)
+  - Todo list persists when switching back to build mode, guiding implementation
+  - MCP tools and todo state injected into planning prompt
+- [x] Deduplicated system prompt construction (MCP + todo injection shared between modes)
+- [x] 239 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection

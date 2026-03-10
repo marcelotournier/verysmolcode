@@ -309,6 +309,29 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "required": ["url"]
                 }),
             },
+            FunctionDecl {
+                name: "todo_update".to_string(),
+                description: "Manage a task list to track progress on complex tasks. Use this to break work into steps, track what's done, and stay organized. The task list is shown to the user and persists across tool calls."
+                    .to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "Action: 'add' (new task), 'start' (mark in-progress), 'done' (mark complete), 'remove' (delete task), 'list' (show all)"
+                        },
+                        "text": {
+                            "type": "string",
+                            "description": "Task description (required for 'add' action)"
+                        },
+                        "id": {
+                            "type": "integer",
+                            "description": "Task ID (required for 'start', 'done', 'remove' actions)"
+                        }
+                    },
+                    "required": ["action"]
+                }),
+            },
         ],
     }]
 }
@@ -333,6 +356,7 @@ impl ToolRegistry {
             "git_log",
             "web_fetch",
             "read_image",
+            "todo_update",
         ];
 
         vec![ToolDeclaration {

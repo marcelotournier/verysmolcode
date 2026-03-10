@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::mcp::client::McpClient;
 use crate::mcp::config::McpConfig;
 use crate::tools::registry::ToolRegistry;
+use crate::tools::todo::TodoList;
 use crate::tools::undo::UndoHistory;
 
 /// Represents a message in the conversation
@@ -37,6 +38,7 @@ pub struct AgentLoop {
     pub model_override: ModelOverride,
     undo_history: UndoHistory,
     startup_warnings: Vec<String>,
+    pub todo: TodoList,
 }
 
 /// Max characters for a single tool result before truncation.
@@ -98,30 +100,41 @@ pub fn strip_thinking_from_history(conversation: &mut [Content]) {
     }
 }
 
-const PLANNING_SYSTEM_PROMPT: &str = r#"You are in PLANNING MODE. Your job is to analyze the task and create a detailed, step-by-step implementation plan.
+const PLANNING_SYSTEM_PROMPT: &str = r#"You are in PLANNING MODE. Your job is to deeply analyze the task and create a thorough implementation plan.
 
-Rules for planning mode:
-1. First, understand the codebase by reading relevant files
-2. Break the task into clear, numbered steps
-3. Identify files that need to be created or modified
-4. Consider edge cases and potential issues
-5. Estimate complexity of each step
-6. DO NOT make any changes - only read files and create a plan
-7. Output a structured plan with clear sections
+## How to plan
+1. READ relevant files first — understand the codebase before planning
+2. Use grep_search and find_files to explore the project structure
+3. Identify ALL files that need creation or modification
+4. Break the work into small, concrete steps (each step = one logical change)
+5. Consider edge cases, error handling, and testing needs
+6. DO NOT make any changes — only read files and output a plan
 
-Format your plan as:
-## Analysis
-[Brief analysis of the task]
+## After analyzing, output your plan in this format:
 
-## Steps
-1. [Step description] - [files involved]
-2. ...
+### Analysis
+[What the task requires and key observations from reading the code]
 
-## Risks
-- [Potential issues to watch for]
+### Architecture decisions
+[Any design choices, trade-offs, or alternatives considered]
 
-## Estimated Complexity
-[Low/Medium/High] - [brief justification]"#;
+### Implementation steps
+1. [Concrete step] → [file(s) affected]
+2. [Concrete step] → [file(s) affected]
+...
+
+### Testing plan
+- [What tests to add/modify]
+- [How to verify the changes work]
+
+### Risks & edge cases
+- [Things that could go wrong]
+
+### Complexity: [Low/Medium/High]
+[Brief justification]
+
+## IMPORTANT: After outputting your plan, use the todo_update tool to create a task list from your steps!
+Call todo_update with action "add" for each implementation step. This way when the user exits planning mode, the task list will guide the implementation."#;
 
 impl AgentLoop {
     pub fn new() -> Result<Self, String> {
@@ -154,6 +167,7 @@ impl AgentLoop {
             model_override: ModelOverride::None,
             undo_history: UndoHistory::new(),
             startup_warnings,
+            todo: TodoList::new(),
         })
     }
 
@@ -281,15 +295,24 @@ impl AgentLoop {
 
             on_event(AgentEvent::ModelSwitch(model.display_name().to_string()));
 
-            // Build request - use planning prompt in planning mode
-            let system_prompt = if self.planning_mode {
-                format!(
-                    "{}\n\n{}",
-                    PLANNING_SYSTEM_PROMPT, &self.config.system_prompt
-                )
-            } else {
-                let mut prompt = self.config.system_prompt.clone();
-                // Add MCP tool hints to system prompt so the model knows what's available
+            // Build system prompt
+            let system_prompt = {
+                let mut prompt = if self.planning_mode {
+                    format!(
+                        "{}\n\n{}",
+                        PLANNING_SYSTEM_PROMPT, &self.config.system_prompt
+                    )
+                } else {
+                    self.config.system_prompt.clone()
+                };
+
+                // Inject todo list state (keeps model focused on objectives)
+                let todo_section = self.todo.to_prompt_section();
+                if !todo_section.is_empty() {
+                    prompt.push_str(&todo_section);
+                }
+
+                // Add MCP tool hints so the model knows what's available
                 if !self.mcp_clients.is_empty() {
                     prompt.push_str("\n\n## Available MCP servers\n");
                     for client in &self.mcp_clients {
@@ -438,10 +461,14 @@ impl AgentLoop {
                     }
                 }
 
-                // Try MCP tools first, then built-in tools
-                let result = self
-                    .try_execute_mcp(&call.name, &call.args)
-                    .unwrap_or_else(|| ToolRegistry::execute(&call.name, &call.args));
+                // Handle todo_update specially (needs mutable access to self.todo)
+                let result = if call.name == "todo_update" {
+                    crate::tools::todo::todo_update(&call.args, &mut self.todo)
+                } else {
+                    // Try MCP tools first, then built-in tools
+                    self.try_execute_mcp(&call.name, &call.args)
+                        .unwrap_or_else(|| ToolRegistry::execute(&call.name, &call.args))
+                };
 
                 // Track if files were modified (for critic decision)
                 if matches!(
@@ -503,7 +530,7 @@ impl AgentLoop {
         Ok(())
     }
 
-    /// Critic step: verify the work was actually done correctly
+    /// Code review step: verify the work with actual diff context
     fn run_critic<F>(&mut self, original_task: &str, on_event: &mut F) -> Result<(), String>
     where
         F: FnMut(AgentEvent),
@@ -515,19 +542,42 @@ impl AgentLoop {
             ModelId::Gemini25FlashLite
         } else {
             on_event(AgentEvent::Status(
-                "Critic skipped (Flash-Lite budget exhausted)".to_string(),
+                "Review skipped (Flash-Lite budget exhausted)".to_string(),
             ));
             return Ok(());
         };
 
-        on_event(AgentEvent::Status("Verifying work...".to_string()));
+        on_event(AgentEvent::Status("Reviewing changes...".to_string()));
+
+        // Get the actual diff of changes for the reviewer
+        let diff_output = {
+            let diff_result = crate::tools::git::git_diff(&serde_json::json!({}));
+            diff_result
+                .get("output")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+
+        let diff_context = if diff_output.is_empty() {
+            String::new()
+        } else {
+            let truncated = safe_truncate(&diff_output, 3000);
+            format!("\n\nGit diff of changes made:\n```\n{}\n```", truncated)
+        };
 
         let critic_prompt = format!(
-            "Review if the following task was completed correctly:\n\nTask: {}\n\n\
-             Check the recent conversation and tool results. Was the task fully completed? \
-             If yes, say 'VERIFIED: [brief summary]'. \
-             If not, say 'INCOMPLETE: [what's missing]' and suggest next steps.",
-            original_task
+            "Code review for task: {}\n{}\n\n\
+             Review the changes and conversation above. Check for:\n\
+             1. CORRECTNESS: Does the code actually solve the task?\n\
+             2. BUGS: Any obvious bugs, off-by-one errors, or edge cases?\n\
+             3. COMPLETENESS: Are there missing imports, error handling, or test coverage?\n\
+             4. STYLE: Does it match the existing code style?\n\n\
+             Respond with one of:\n\
+             - APPROVED: [1-2 sentence summary of what was done well]\n\
+             - NEEDS_WORK: [specific issues to fix, be concrete]\n\
+             Be concise and specific. No generic praise.",
+            original_task, diff_context
         );
 
         self.conversation.push(Content {
@@ -536,12 +586,12 @@ impl AgentLoop {
         });
 
         let request = build_request(
-            "You are a code review critic. Verify work was done correctly. Be concise.",
+            "You are a senior code reviewer. Review changes for correctness, bugs, and completeness. Be specific and concise. Focus on real issues, not style nitpicks.",
             self.conversation.clone(),
-            None, // No tools needed for critic
+            None,
             critic_model,
-            0.3, // Low temperature for consistent evaluation
-            512, // Short response
+            0.3,
+            768,
         );
 
         match self.client.generate(critic_model, &request) {
@@ -553,7 +603,7 @@ impl AgentLoop {
                 let (texts, _) = extract_response(&response);
                 for text in &texts {
                     if !text.trim().is_empty() {
-                        on_event(AgentEvent::Status(format!("Critic: {}", text)));
+                        on_event(AgentEvent::Status(format!("Review: {}", text)));
                     }
                 }
 
@@ -565,9 +615,8 @@ impl AgentLoop {
                 }
             }
             Err(_) => {
-                // Critic failure is non-fatal
                 on_event(AgentEvent::Status(
-                    "Critic check skipped (rate limit)".to_string(),
+                    "Review skipped (rate limit)".to_string(),
                 ));
             }
         }

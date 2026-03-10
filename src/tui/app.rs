@@ -140,6 +140,12 @@ impl App {
                     let _ = done_tx.send(());
                     continue;
                 }
+                if user_input == "/_todo" {
+                    let display = agent.todo.to_display();
+                    let _ = event_tx.send(AgentEvent::Text(display));
+                    let _ = done_tx.send(());
+                    continue;
+                }
                 if user_input == "/_undo" {
                     match agent.undo() {
                         Ok(paths) => {
@@ -273,6 +279,12 @@ impl App {
                     self.messages.push(DisplayMessage::User(input.clone()));
                     if let Some(tx) = &self.agent_tx {
                         let _ = tx.send("/_undo".to_string());
+                    }
+                    self.is_processing = true;
+                }
+                CommandResponse::ShowTodo => {
+                    if let Some(tx) = &self.agent_tx {
+                        let _ = tx.send("/_todo".to_string());
                     }
                     self.is_processing = true;
                 }
@@ -613,6 +625,7 @@ pub enum CommandResponse {
     Save(Option<String>), // Optional filename
     Retry,
     Compact,
+    ShowTodo,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -810,6 +823,7 @@ mod tests {
         let _save_file = CommandResponse::Save(Some("test.md".to_string()));
         let _retry = CommandResponse::Retry;
         let _compact = CommandResponse::Compact;
+        let _todo = CommandResponse::ShowTodo;
     }
 
     #[test]

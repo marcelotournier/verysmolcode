@@ -25,6 +25,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("/mcp-rm", "Remove an MCP server: /mcp-rm <name>"),
     ("/version", "Show version information"),
     ("/retry", "Retry the last message"),
+    ("/todo", "Show current task list"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -51,6 +52,8 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("\n\u{1F527} Tools\n");
             help.push_str("  /undo       Revert last file changes\n");
             help.push_str("  /save       Save conversation to file\n");
+            help.push_str("  /todo       Show task list\n");
+            help.push_str("  /retry      Retry last message\n");
             help.push_str("  /config     Show/edit configuration\n");
             help.push_str("\n\u{1F50C} MCP Servers\n");
             help.push_str("  /mcp        List MCP servers\n");
@@ -265,6 +268,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             env!("CARGO_PKG_VERSION")
         )),
         "/retry" | "/r" => CommandResponse::Retry,
+        "/todo" | "/t" => CommandResponse::ShowTodo,
         _ => CommandResponse::Message(format!(
             "Unknown command: {}. Type /help for available commands.",
             cmd
