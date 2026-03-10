@@ -113,40 +113,48 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
         match msg {
             DisplayMessage::User(text) => {
                 lines.push(Line::from(vec![
-                    Span::styled("> ", Style::default().fg(USER_COLOR).bold()),
+                    Span::styled("\u{1F464} ", Style::default().fg(USER_COLOR).bold()),
                     Span::styled(text.as_str(), Style::default().fg(USER_COLOR)),
                 ]));
             }
             DisplayMessage::Assistant(text) => {
                 // Word-wrap long responses
-                for line in wrap_text(text, width.saturating_sub(2)) {
-                    lines.push(Line::from(Span::styled(
-                        line,
-                        Style::default().fg(ASSISTANT_COLOR),
-                    )));
+                let wrapped = wrap_text(text, width.saturating_sub(2));
+                for (i, line) in wrapped.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled("\u{1FAD0} ", Style::default().fg(ASSISTANT_COLOR)),
+                            Span::styled(line.clone(), Style::default().fg(ASSISTANT_COLOR)),
+                        ]));
+                    } else {
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", line),
+                            Style::default().fg(ASSISTANT_COLOR),
+                        )));
+                    }
                 }
             }
             DisplayMessage::ToolCall(text) => {
                 lines.push(Line::from(vec![
-                    Span::styled("  > ", Style::default().fg(TOOL_COLOR)),
+                    Span::styled("  \u{1F529} ", Style::default().fg(TOOL_COLOR)),
                     Span::styled(text.as_str(), Style::default().fg(TOOL_COLOR)),
                 ]));
             }
             DisplayMessage::ToolResult(text) => {
                 lines.push(Line::from(vec![
-                    Span::styled("  < ", Style::default().fg(TOOL_RESULT_COLOR)),
+                    Span::styled("  \u{2705} ", Style::default().fg(TOOL_RESULT_COLOR)),
                     Span::styled(text.as_str(), Style::default().fg(TOOL_RESULT_COLOR)),
                 ]));
             }
             DisplayMessage::Status(text) => {
                 lines.push(Line::from(Span::styled(
-                    format!("  {}", text),
+                    format!("  \u{1F4AC} {}", text),
                     Style::default().fg(STATUS_COLOR).italic(),
                 )));
             }
             DisplayMessage::Error(text) => {
                 lines.push(Line::from(Span::styled(
-                    format!("Error: {}", text),
+                    format!("\u{26A0}\u{FE0F}  {}", text),
                     Style::default().fg(ERROR_COLOR).bold(),
                 )));
             }
