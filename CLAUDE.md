@@ -81,9 +81,14 @@
 - [x] Improved safety: catch curl/wget URL | sh/bash/zsh pipe patterns
 - [x] Exported agent helper functions for external test access
 
+## Completed (v0.8.0)
+- [x] /undo command (UndoHistory module) - reverts last turn's file changes
+- [x] Tracks write_file and edit_file mutations with pre-mutation snapshots
+- [x] Handles: existing file restore, new file deletion, per-file dedup, one-turn bound
+- [x] 190 unit tests
+
 ## Planned
 - [ ] macOS and Windows wheel builds in CI
-- [ ] /undo command to revert last file changes
 - [ ] Conversation export/save (/save)
 
 # Lessons Learned
