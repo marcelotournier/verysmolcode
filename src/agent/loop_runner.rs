@@ -673,13 +673,21 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
                     "chmod 777",
                     "chmod -R 777",
                     "> /dev/",
-                    "curl | sh",
-                    "wget | sh",
-                    "curl | bash",
                 ];
-                return dangerous.iter().any(|d| cmd.contains(d));
+                if dangerous.iter().any(|d| cmd.contains(d)) {
+                    return true;
+                }
+                // Block piping downloads to shell execution
+                let has_download = cmd.contains("curl ") || cmd.contains("wget ");
+                let has_pipe_exec =
+                    cmd.contains("| sh") || cmd.contains("| bash") || cmd.contains("| zsh");
+                if has_download && has_pipe_exec {
+                    return true;
+                }
+                false
+            } else {
+                false
             }
-            false
         }
         "write_file" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
