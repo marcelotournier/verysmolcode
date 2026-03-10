@@ -411,31 +411,39 @@ fn test_config_set_safety_disabled() {
 
 #[test]
 fn test_mcp_add_success() {
-    let msg = get_message("/mcp-add test_srv_add echo hello world");
+    let name = format!("test_add_{}", std::process::id());
+    let msg = get_message(&format!("/mcp-add {} echo hello world", name));
     assert!(msg.contains("added"));
-    // Clean up
-    let _ = get_message("/mcp-rm test_srv_add");
+    let _ = get_message(&format!("/mcp-rm {}", name));
 }
 
 #[test]
 fn test_mcp_add_no_extra_args() {
-    let msg = get_message("/mcp-add test_srv_noargs echo");
+    let name = format!("test_noargs_{}", std::process::id());
+    let msg = get_message(&format!("/mcp-add {} echo", name));
     assert!(msg.contains("added"));
-    let _ = get_message("/mcp-rm test_srv_noargs");
+    let _ = get_message(&format!("/mcp-rm {}", name));
 }
 
 #[test]
 fn test_mcp_rm_success() {
-    // Add first, then remove
-    let _ = get_message("/mcp-add test_srv_rm echo hi");
-    let msg = get_message("/mcp-rm test_srv_rm");
+    let name = format!("test_rm_{}", std::process::id());
+    let _ = get_message(&format!("/mcp-add {} echo hi", name));
+    let msg = get_message(&format!("/mcp-rm {}", name));
     assert!(msg.contains("removed"));
 }
 
 #[test]
 fn test_mcp_list_with_server() {
-    let _ = get_message("/mcp-add test_srv_list echo hi");
+    // Use a unique name to avoid race conditions with parallel tests
+    let name = format!("test_srv_list_{}", std::process::id());
+    let _ = get_message(&format!("/mcp-add {} echo hi", name));
     let msg = get_message("/mcp");
-    assert!(msg.contains("test_srv_list"));
-    let _ = get_message("/mcp-rm test_srv_list");
+    assert!(
+        msg.contains(&name),
+        "Expected '{}' in MCP list, got: {}",
+        name,
+        msg
+    );
+    let _ = get_message(&format!("/mcp-rm {}", name));
 }

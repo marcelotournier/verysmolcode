@@ -546,13 +546,22 @@ impl App {
     }
 
     fn save_conversation(&self, filename: Option<&str>) -> Result<String, String> {
-        let path = match filename {
-            Some(f) => f.to_string(),
+        let name = match filename {
+            Some(f) => {
+                // Block path traversal
+                if f.contains('/') || f.contains('\\') || f.contains("..") {
+                    return Err("Filename cannot contain path separators or '..'".to_string());
+                }
+                f.to_string()
+            }
             None => {
                 let now = chrono::Local::now();
                 format!("vsc-conversation-{}.md", now.format("%Y%m%d-%H%M%S"))
             }
         };
+
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let path = cwd.join(&name);
 
         let mut output = String::from("# VerySmolCode Conversation\n\n");
 
@@ -582,8 +591,9 @@ impl App {
             }
         }
 
-        std::fs::write(&path, &output).map_err(|e| format!("Failed to write {}: {}", path, e))?;
-        Ok(path)
+        std::fs::write(&path, &output)
+            .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+        Ok(path.display().to_string())
     }
 
     pub fn token_summary(&self) -> String {
