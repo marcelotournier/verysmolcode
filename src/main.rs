@@ -4,6 +4,7 @@ mod agent;
 mod api;
 mod config;
 mod mcp;
+mod telegram;
 mod tools;
 mod tui;
 mod utils;

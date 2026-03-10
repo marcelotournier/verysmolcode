@@ -66,6 +66,10 @@ pub struct App {
 
     // Cached config value (avoids disk read every frame)
     pub auto_compact_threshold: u32,
+
+    // Telegram integration
+    telegram_rx: Option<mpsc::Receiver<String>>,
+    pub telegram_enabled: bool,
 }
 
 impl App {
@@ -104,13 +108,15 @@ impl App {
             todo_summary: String::new(),
             todo_display: String::new(),
             auto_compact_threshold: crate::config::Config::load().auto_compact_threshold,
+            telegram_rx: None,
+            telegram_enabled: false,
         };
-
-        // Welcome message (rendered as styled widget in ui.rs when messages are empty)
-        // No need for ASCII art in messages — the welcome screen handles it
 
         // Start the agent thread
         app.start_agent()?;
+
+        // Start Telegram polling if configured
+        app.start_telegram_polling();
 
         Ok(app)
     }
@@ -250,6 +256,42 @@ impl App {
         });
 
         Ok(())
+    }
+
+    /// Start a background thread that polls Telegram for incoming messages
+    fn start_telegram_polling(&mut self) {
+        let tg_config = crate::telegram::config::TelegramConfig::load();
+        if !tg_config.is_configured() {
+            return;
+        }
+
+        let mut bot = match crate::telegram::bot::TelegramBot::from_config(&tg_config) {
+            Some(b) => b,
+            None => return,
+        };
+
+        let (tg_tx, tg_rx) = mpsc::channel::<String>();
+        self.telegram_rx = Some(tg_rx);
+        self.telegram_enabled = true;
+
+        thread::spawn(move || {
+            loop {
+                // Long poll with 10s timeout (Telegram server holds connection)
+                match bot.get_updates(10) {
+                    Ok(messages) => {
+                        for msg in messages {
+                            if tg_tx.send(msg).is_err() {
+                                return; // Channel closed, TUI shut down
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Network error — wait before retrying
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                    }
+                }
+            }
+        });
     }
 
     pub fn submit_input(&mut self) {
@@ -688,6 +730,37 @@ impl App {
                         needs_scroll = true;
                     }
                 }
+            }
+        }
+
+        // Check for incoming Telegram messages
+        let tg_messages: Vec<String> = if let Some(rx) = &self.telegram_rx {
+            let mut msgs = Vec::new();
+            while let Ok(msg) = rx.try_recv() {
+                msgs.push(msg);
+            }
+            msgs
+        } else {
+            Vec::new()
+        };
+
+        for msg in tg_messages {
+            // Show the Telegram message in the TUI
+            self.messages
+                .push(DisplayMessage::Status(format!("[Telegram] {}", msg)));
+            needs_scroll = true;
+
+            // If agent is not busy, send the message to the agent
+            if !self.is_processing {
+                if let Some(tx) = &self.agent_tx {
+                    let _ = tx.send(msg);
+                    self.is_processing = true;
+                }
+            }
+            // If agent is busy, queue it as a context injection
+            else if let Some(tx) = &self.agent_tx {
+                // Will be picked up after current task completes
+                let _ = tx.send(format!("/_context [Telegram from user]: {}", msg));
             }
         }
 
@@ -1295,6 +1368,8 @@ impl App {
             todo_summary: String::new(),
             todo_display: String::new(),
             auto_compact_threshold: 24000,
+            telegram_rx: None,
+            telegram_enabled: false,
         }
     }
 }

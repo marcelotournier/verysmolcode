@@ -1,4 +1,5 @@
 use crate::api::types::{FunctionDecl, ToolDeclaration};
+use crate::telegram::bot::send_telegram_tool;
 use crate::tools::{file_ops, git, grep, web};
 use serde_json::{json, Value};
 
@@ -23,6 +24,7 @@ pub fn execute_tool(name: &str, args: &Value) -> Value {
         "run_command" => git::run_shell(args),
         "web_fetch" => web::web_fetch(args),
         "read_image" => file_ops::read_image(args),
+        "send_telegram" => send_telegram_tool(args),
         _ => json!({"error": format!("Unknown tool: {}", name)}),
     }
 }
@@ -338,6 +340,21 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                         }
                     },
                     "required": ["action"]
+                }),
+            },
+            FunctionDecl {
+                name: "send_telegram".to_string(),
+                description: "Send a message to the user via Telegram. Use ONLY for: asking the user a question that blocks progress, reporting that a task is complete, or sharing a final answer. Do NOT use for routine status updates."
+                    .to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "description": "Message to send to the user via Telegram"
+                        }
+                    },
+                    "required": ["message"]
                 }),
             },
         ],

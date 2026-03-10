@@ -7,7 +7,7 @@ use verysmolcode::tools::registry::{execute_tool, get_tool_declarations, ToolReg
 fn test_declarations_count() {
     let decls = ToolRegistry::declarations();
     assert_eq!(decls.len(), 1); // One ToolDeclaration with all function decls
-    assert_eq!(decls[0].function_declarations.len(), 19); // 19 tools
+    assert_eq!(decls[0].function_declarations.len(), 20); // 20 tools (including send_telegram)
 }
 
 #[test]
@@ -37,6 +37,7 @@ fn test_declarations_tool_names() {
     assert!(names.contains(&"run_command"));
     assert!(names.contains(&"web_fetch"));
     assert!(names.contains(&"read_image"));
+    assert!(names.contains(&"send_telegram"));
 }
 
 #[test]

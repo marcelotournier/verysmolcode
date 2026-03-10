@@ -4,6 +4,7 @@ pub mod agent;
 pub mod api;
 pub mod config;
 pub mod mcp;
+pub mod telegram;
 pub mod tools;
 pub mod tui;
 pub mod utils;

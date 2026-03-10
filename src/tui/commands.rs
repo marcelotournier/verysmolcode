@@ -41,6 +41,15 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "/agents",
         "Show loaded AGENTS.md / CLAUDE.md instruction files",
     ),
+    (
+        "/telegram",
+        "Show Telegram bot status or setup: /telegram setup <token> <chat_id>",
+    ),
+    (
+        "/telegram-test",
+        "Send a test message to verify Telegram connection",
+    ),
+    ("/telegram-off", "Disable Telegram integration"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -79,6 +88,10 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  /mcp        List MCP servers\n");
             help.push_str("  /mcp-add    Add MCP server\n");
             help.push_str("  /mcp-rm     Remove MCP server\n");
+            help.push_str("\n\u{1F4F1} Telegram\n");
+            help.push_str("  /telegram      Setup & status\n");
+            help.push_str("  /telegram-test Send test message\n");
+            help.push_str("  /telegram-off  Disable integration\n");
             help.push_str("\n\u{2328}\u{FE0F}  Keybindings\n");
             help.push_str("  Ctrl+C     Cancel/Quit\n  Ctrl+D     Quit (on empty input)\n");
             help.push_str("  Ctrl+L     Clear screen\n");
@@ -344,6 +357,114 @@ pub fn handle_command(input: &str) -> CommandResponse {
                  Create AGENTS.md in your project root for project-specific instructions.",
             );
             CommandResponse::Message(msg)
+        }
+        "/telegram" => {
+            if let Some(setup_rest) = args.strip_prefix("setup ") {
+                let setup_parts: Vec<&str> = setup_rest.splitn(2, ' ').collect();
+                if setup_parts.len() < 2 {
+                    return CommandResponse::Message(
+                        "Usage: /telegram setup <bot_token> <chat_id>\n\n\
+                         1. Open Telegram and chat with @BotFather\n\
+                         2. Send /newbot and follow instructions to get a token\n\
+                         3. Send a message to your bot, then visit:\n\
+                            https://api.telegram.org/bot<TOKEN>/getUpdates\n\
+                         4. Find your chat_id in the response\n\
+                         5. Run: /telegram setup <token> <chat_id>"
+                            .to_string(),
+                    );
+                }
+                let token = setup_parts[0].trim().to_string();
+                let chat_id =
+                    match setup_parts[1].trim().parse::<i64>() {
+                        Ok(id) => id,
+                        Err(_) => return CommandResponse::Message(
+                            "Invalid chat_id. It should be a number (can be negative for groups)."
+                                .to_string(),
+                        ),
+                    };
+
+                // Verify the token works
+                let bot = crate::telegram::bot::TelegramBot::new(token.clone(), chat_id);
+                match bot.verify() {
+                    Ok(bot_name) => {
+                        let config = crate::telegram::config::TelegramConfig {
+                            bot_token: Some(token),
+                            chat_id: Some(chat_id),
+                            enabled: true,
+                        };
+                        match config.save() {
+                            Ok(()) => CommandResponse::Message(format!(
+                                "Telegram connected! Bot: {}\n\
+                                 Chat ID: {}\n\
+                                 Use /telegram-test to send a test message.\n\
+                                 The agent can now send you messages via Telegram.",
+                                bot_name, chat_id
+                            )),
+                            Err(e) => {
+                                CommandResponse::Message(format!("Failed to save config: {}", e))
+                            }
+                        }
+                    }
+                    Err(e) => CommandResponse::Message(format!(
+                        "Bot verification failed: {}\nPlease check your token.",
+                        e
+                    )),
+                }
+            } else {
+                let config = crate::telegram::config::TelegramConfig::load();
+                if config.is_configured() {
+                    CommandResponse::Message(format!(
+                        "Telegram: enabled\n\
+                         Chat ID: {}\n\
+                         Token: {}...{}\n\n\
+                         Commands:\n\
+                         /telegram-test  Send a test message\n\
+                         /telegram-off   Disable Telegram\n\n\
+                         The agent has a send_telegram tool to message you.",
+                        config.chat_id.unwrap(),
+                        &config.bot_token.as_ref().unwrap()
+                            [..8.min(config.bot_token.as_ref().unwrap().len())],
+                        &config.bot_token.as_ref().unwrap()
+                            [config.bot_token.as_ref().unwrap().len().saturating_sub(4)..],
+                    ))
+                } else {
+                    CommandResponse::Message(
+                        "Telegram: not configured\n\n\
+                         Setup instructions:\n\
+                         1. Open Telegram and chat with @BotFather\n\
+                         2. Send /newbot and follow instructions to get a token\n\
+                         3. Send a message to your bot, then visit:\n\
+                            https://api.telegram.org/bot<TOKEN>/getUpdates\n\
+                         4. Find your chat_id in the response JSON\n\
+                         5. Run: /telegram setup <token> <chat_id>"
+                            .to_string(),
+                    )
+                }
+            }
+        }
+        "/telegram-test" => {
+            let config = crate::telegram::config::TelegramConfig::load();
+            match crate::telegram::bot::TelegramBot::from_config(&config) {
+                Some(bot) => match bot
+                    .send_message("VerySmolCode connected! The agent can now send you messages.")
+                {
+                    Ok(()) => CommandResponse::Message(
+                        "Test message sent! Check your Telegram.".to_string(),
+                    ),
+                    Err(e) => CommandResponse::Message(format!("Failed to send: {}", e)),
+                },
+                None => CommandResponse::Message(
+                    "Telegram not configured. Use /telegram setup <token> <chat_id>".to_string(),
+                ),
+            }
+        }
+        "/telegram-off" => {
+            let mut config = crate::telegram::config::TelegramConfig::load();
+            config.enabled = false;
+            match config.save() {
+                Ok(()) => CommandResponse::Message("Telegram integration disabled.".to_string()),
+                Err(e) => CommandResponse::Message(format!("Failed to save config: {}", e)),
+            }
         }
         "/retry" | "/r" => CommandResponse::Retry,
         "/diff" | "/d" => {
