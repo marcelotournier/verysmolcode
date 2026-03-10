@@ -269,6 +269,11 @@ impl App {
                 CommandResponse::Message(msg) => {
                     self.messages.push(DisplayMessage::User(input.clone()));
                     self.messages.push(DisplayMessage::Assistant(msg));
+                    // Refresh cached config if /config was used
+                    if input.starts_with("/config") {
+                        self.auto_compact_threshold =
+                            crate::config::Config::load().auto_compact_threshold;
+                    }
                 }
                 CommandResponse::Quit => {
                     self.should_quit = true;
@@ -325,10 +330,14 @@ impl App {
                     self.is_processing = true;
                 }
                 CommandResponse::ShowTodo => {
-                    if let Some(tx) = &self.agent_tx {
-                        let _ = tx.send("/_todo".to_string());
-                    }
-                    self.is_processing = true;
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    let display = if self.todo_display.is_empty() {
+                        "No tasks. The agent will add tasks when working on complex requests."
+                            .to_string()
+                    } else {
+                        self.todo_display.clone()
+                    };
+                    self.messages.push(DisplayMessage::Assistant(display));
                 }
                 CommandResponse::Resume(id) => {
                     self.handle_resume(id.as_deref());
