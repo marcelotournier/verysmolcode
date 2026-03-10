@@ -165,6 +165,16 @@
 - [x] README updated with todo list, code reviewer, 19 tools, 487 tests
 - [x] 487 unit tests
 
+## Completed (v0.9.5)
+- [x] Fixed UTF-8 safety bugs in TUI rendering (panics on multi-byte chars)
+  - Suggestion popup description truncation used unsafe byte slicing
+  - wrap_text() used byte length instead of char count for width
+  - Tool arg display in TUI and prompt mode used unsafe byte slicing
+  - Underflow protection for narrow terminals (< 15 columns)
+- [x] Tool result summarizers for todo_update, find_files, list_directory, web_fetch, read_image
+- [x] 16 new command tests: config clamping, safety aliases, MCP add/rm success paths
+- [x] 535 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
