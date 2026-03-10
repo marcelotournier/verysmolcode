@@ -89,6 +89,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         let pos = word_start(&app.input, app.cursor_pos);
                         app.input.drain(pos..app.cursor_pos);
                         app.cursor_pos = pos;
+                        app.update_suggestions();
                     }
                     _ => {}
                 }
