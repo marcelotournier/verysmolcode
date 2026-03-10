@@ -129,19 +129,20 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
                 ]));
             }
             DisplayMessage::Assistant(text) => {
-                // Word-wrap long responses
-                let wrapped = wrap_text(text, width.saturating_sub(2));
-                for (i, line) in wrapped.iter().enumerate() {
+                // Render with basic markdown styling
+                let md_lines = render_markdown(text, width.saturating_sub(2));
+                for (i, line) in md_lines.iter().enumerate() {
                     if i == 0 {
-                        lines.push(Line::from(vec![
-                            Span::styled("\u{1FAD0} ", Style::default().fg(ASSISTANT_COLOR)),
-                            Span::styled(line.clone(), Style::default().fg(ASSISTANT_COLOR)),
-                        ]));
-                    } else {
-                        lines.push(Line::from(Span::styled(
-                            format!("  {}", line),
+                        let mut spans = vec![Span::styled(
+                            "\u{1FAD0} ",
                             Style::default().fg(ASSISTANT_COLOR),
-                        )));
+                        )];
+                        spans.extend(line.spans.iter().cloned());
+                        lines.push(Line::from(spans));
+                    } else {
+                        let mut spans = vec![Span::raw("  ")];
+                        spans.extend(line.spans.iter().cloned());
+                        lines.push(Line::from(spans));
                     }
                 }
             }
@@ -618,6 +619,166 @@ fn draw_todo_popup(f: &mut Frame, area: Rect, app: &App) {
 
     let paragraph = Paragraph::new(text_lines);
     f.render_widget(paragraph, inner);
+}
+
+const CODE_BG: Color = Color::Rgb(30, 35, 55);
+const CODE_FG: Color = Color::Rgb(180, 200, 160);
+const HEADER_FG: Color = Color::Rgb(140, 190, 255);
+const BOLD_FG: Color = Color::Rgb(220, 225, 240);
+
+/// Basic markdown rendering: code blocks, headers, bold, bullets
+fn render_markdown<'a>(text: &str, width: usize) -> Vec<Line<'a>> {
+    let mut result: Vec<Line> = Vec::new();
+    let mut in_code_block = false;
+
+    for raw_line in text.lines() {
+        // Code block toggle
+        if raw_line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+            if in_code_block {
+                // Show language hint if present
+                let lang = raw_line.trim_start().strip_prefix("```").unwrap_or("");
+                if !lang.is_empty() {
+                    result.push(Line::from(Span::styled(
+                        format!("  --- {} ---", lang),
+                        Style::default().fg(CODE_FG).italic(),
+                    )));
+                }
+            }
+            continue;
+        }
+
+        if in_code_block {
+            // Code lines: different colors, no wrapping
+            let display = if raw_line.len() > width {
+                format!("{}...", &raw_line[..width.saturating_sub(3)])
+            } else {
+                raw_line.to_string()
+            };
+            result.push(Line::from(Span::styled(
+                display,
+                Style::default().fg(CODE_FG).bg(CODE_BG),
+            )));
+            continue;
+        }
+
+        // Headers (check ### before ## before #)
+        let header_text = raw_line
+            .strip_prefix("### ")
+            .or_else(|| raw_line.strip_prefix("## "))
+            .or_else(|| raw_line.strip_prefix("# "));
+        if let Some(header_text) = header_text {
+            let wrapped = wrap_text(header_text, width);
+            for line in wrapped {
+                result.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(HEADER_FG).bold(),
+                )));
+            }
+            continue;
+        }
+
+        // Bullet points
+        let trimmed = raw_line.trim_start();
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            let indent = raw_line.len() - trimmed.len();
+            let bullet_indent = " ".repeat(indent);
+            let bullet_text = &trimmed[2..];
+            let wrapped = wrap_text(bullet_text, width.saturating_sub(indent + 4));
+            for (i, line) in wrapped.iter().enumerate() {
+                if i == 0 {
+                    result.push(Line::from(Span::styled(
+                        format!("{}\u{2022} {}", bullet_indent, line),
+                        Style::default().fg(ASSISTANT_COLOR),
+                    )));
+                } else {
+                    result.push(Line::from(Span::styled(
+                        format!("{}  {}", bullet_indent, line),
+                        Style::default().fg(ASSISTANT_COLOR),
+                    )));
+                }
+            }
+            continue;
+        }
+
+        // Regular text with inline code and bold
+        let wrapped = wrap_text(raw_line, width);
+        for line in wrapped {
+            if line.contains('`') || line.contains("**") {
+                result.push(render_inline_markdown(&line));
+            } else {
+                result.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(ASSISTANT_COLOR),
+                )));
+            }
+        }
+    }
+
+    if result.is_empty() {
+        result.push(Line::from(Span::styled(
+            text.to_string(),
+            Style::default().fg(ASSISTANT_COLOR),
+        )));
+    }
+
+    result
+}
+
+/// Render inline markdown: `code` and **bold**
+fn render_inline_markdown<'a>(text: &str) -> Line<'a> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut chars = text.chars().peekable();
+    let mut current = String::new();
+
+    while let Some(c) = chars.next() {
+        if c == '`' {
+            // Flush current text
+            if !current.is_empty() {
+                spans.push(Span::styled(
+                    std::mem::take(&mut current),
+                    Style::default().fg(ASSISTANT_COLOR),
+                ));
+            }
+            // Collect code content
+            let mut code = String::new();
+            for ch in chars.by_ref() {
+                if ch == '`' {
+                    break;
+                }
+                code.push(ch);
+            }
+            spans.push(Span::styled(code, Style::default().fg(CODE_FG).bg(CODE_BG)));
+        } else if c == '*' && chars.peek() == Some(&'*') {
+            chars.next(); // consume second *
+                          // Flush current text
+            if !current.is_empty() {
+                spans.push(Span::styled(
+                    std::mem::take(&mut current),
+                    Style::default().fg(ASSISTANT_COLOR),
+                ));
+            }
+            // Collect bold content
+            let mut bold = String::new();
+            while let Some(ch) = chars.next() {
+                if ch == '*' && chars.peek() == Some(&'*') {
+                    chars.next(); // consume closing **
+                    break;
+                }
+                bold.push(ch);
+            }
+            spans.push(Span::styled(bold, Style::default().fg(BOLD_FG).bold()));
+        } else {
+            current.push(c);
+        }
+    }
+
+    // Flush remaining
+    if !current.is_empty() {
+        spans.push(Span::styled(current, Style::default().fg(ASSISTANT_COLOR)));
+    }
+
+    Line::from(spans)
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
