@@ -369,6 +369,12 @@
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
 
+## Completed (v0.12.6) — Performance Fix & Test Coverage
+- [x] Cached message rendering (no re-render on every frame)
+- [x] Eliminated per-frame Config::load() disk I/O
+- [x] 105 new tests: commands, models, config, MCP, API types
+- [x] 398 unit tests total
+
 ## Completed (v0.12.5) — Markdown Polish, Better Auto-Todo
 - [x] Numbered lists in markdown renderer (1. 2. 3.)
 - [x] Horizontal rules (---) as thin box-drawing lines
