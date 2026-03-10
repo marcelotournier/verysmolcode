@@ -873,7 +873,9 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
                 let dangerous = [
                     "rm -rf",
                     "rm -r /",
+                    "sudo rm",
                     "dd if=",
+                    "dd of=",
                     "mkfs",
                     "format",
                     "shutdown",
@@ -883,8 +885,15 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
                     "chmod 777",
                     "chmod -R 777",
                     "> /dev/",
+                    "> /etc",
+                    "> /sys",
+                    "> /proc",
                 ];
                 if dangerous.iter().any(|d| cmd.contains(d)) {
+                    return true;
+                }
+                // Block find -delete (destructive find)
+                if cmd.contains("find ") && cmd.contains("-delete") {
                     return true;
                 }
                 // Block piping downloads to shell execution

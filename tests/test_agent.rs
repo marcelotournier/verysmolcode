@@ -366,6 +366,46 @@ fn test_dangerous_write_to_sys() {
     ));
 }
 
+#[test]
+fn test_dangerous_sudo_rm() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "sudo rm /important/file"})
+    ));
+}
+
+#[test]
+fn test_dangerous_dd_of() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "dd of=/dev/sda bs=1M"})
+    ));
+}
+
+#[test]
+fn test_dangerous_find_delete() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "find / -name '*.log' -delete"})
+    ));
+}
+
+#[test]
+fn test_dangerous_redirect_to_etc() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "echo bad > /etc/passwd"})
+    ));
+}
+
+#[test]
+fn test_dangerous_redirect_to_sys() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "echo 1 > /sys/class/power"})
+    ));
+}
+
 // -- ModelOverride tests --
 
 #[test]
