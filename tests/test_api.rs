@@ -507,3 +507,72 @@ fn test_google_search_tool_declaration() {
     // functionDeclarations should be omitted when empty
     assert!(json.get("functionDeclarations").is_none());
 }
+
+// -- build_request thinking budget per tier --
+
+#[test]
+fn test_build_request_pro_thinking_budget() {
+    let request = build_request(
+        "sys",
+        vec![],
+        None,
+        ModelId::Gemini31Pro, // 3.1 Pro supports thinking
+        0.7,
+        1024,
+    );
+    let config = request.generation_config.unwrap();
+    assert!(config.thinking_config.is_some());
+    // Pro tier gets 2048 thinking budget
+    assert_eq!(config.thinking_config.unwrap().thinking_budget, 2048);
+}
+
+#[test]
+fn test_build_request_flash_lite_thinking_budget() {
+    let request = build_request("sys", vec![], None, ModelId::Gemini31FlashLite, 0.7, 1024);
+    let config = request.generation_config.unwrap();
+    assert!(config.thinking_config.is_some());
+    // FlashLite tier gets 512 thinking budget
+    assert_eq!(config.thinking_config.unwrap().thinking_budget, 512);
+}
+
+// -- ModelRouter fallback chain end --
+
+#[test]
+fn test_fallback_for_flash_lite_returns_none_at_end() {
+    let mut router = ModelRouter::new();
+    // Exhaust all FlashLite models
+    for _ in 0..1000 {
+        router.g3_flash_lite.record_request();
+        router.flash_lite.record_request();
+    }
+    let fb = router.fallback_for(ModelId::Gemini25FlashLite);
+    assert!(fb.is_none());
+}
+
+// -- ModelRouter record_request --
+
+#[test]
+fn test_model_router_record_request() {
+    let mut router = ModelRouter::new();
+    let remaining_before = router.g3_flash.remaining_today();
+    router.record_request(ModelId::Gemini3Flash);
+    let remaining_after = router.g3_flash.remaining_today();
+    assert_eq!(remaining_before - remaining_after, 1);
+}
+
+// -- Error response deserialization --
+
+#[test]
+fn test_error_response_deserialization() {
+    let json = serde_json::json!({
+        "error": {
+            "code": 429,
+            "message": "Rate limit exceeded",
+            "status": "RESOURCE_EXHAUSTED"
+        }
+    });
+
+    let response: GenerateResponse = serde_json::from_value(json).unwrap();
+    assert!(response.error.is_some());
+    assert!(response.candidates.is_empty());
+}

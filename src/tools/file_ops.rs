@@ -243,3 +243,220 @@ fn check_safe_path(path: &Path) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- check_safe_path tests --
+
+    #[test]
+    fn test_safe_path_normal() {
+        assert!(check_safe_path(Path::new("/tmp/test.txt")).is_ok());
+        assert!(check_safe_path(Path::new("/home/user/project/src/main.rs")).is_ok());
+    }
+
+    #[test]
+    fn test_safe_path_blocks_etc() {
+        assert!(check_safe_path(Path::new("/etc/passwd")).is_err());
+    }
+
+    #[test]
+    fn test_safe_path_blocks_usr() {
+        assert!(check_safe_path(Path::new("/usr/local/bin/app")).is_err());
+    }
+
+    #[test]
+    fn test_safe_path_blocks_proc() {
+        assert!(check_safe_path(Path::new("/proc/1/status")).is_err());
+    }
+
+    #[test]
+    fn test_safe_path_blocks_sys() {
+        assert!(check_safe_path(Path::new("/sys/class/net")).is_err());
+    }
+
+    #[test]
+    fn test_safe_path_blocks_home_dotfiles() {
+        if let Some(home) = dirs::home_dir() {
+            assert!(check_safe_path(&home.join(".bashrc")).is_err());
+            assert!(check_safe_path(&home.join(".ssh")).is_err());
+            assert!(check_safe_path(&home.join(".gnupg")).is_err());
+        }
+    }
+
+    // -- read_file tests --
+
+    #[test]
+    fn test_read_file_missing_path() {
+        let result = read_file(&json!({}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_read_file_nonexistent() {
+        let result = read_file(&json!({"path": "/tmp/vsc_nonexistent_file_test.txt"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_read_file_success() {
+        let path = "/tmp/vsc_test_read_file.txt";
+        fs::write(path, "hello world").unwrap();
+        let result = read_file(&json!({"path": path}));
+        assert_eq!(result["content"].as_str().unwrap(), "hello world");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_read_file_truncation() {
+        let path = "/tmp/vsc_test_large_file.txt";
+        let content = "x".repeat(60_000);
+        fs::write(path, &content).unwrap();
+        let result = read_file(&json!({"path": path}));
+        assert_eq!(result["truncated"].as_bool(), Some(true));
+        assert!(result["content"].as_str().unwrap().len() <= 50_000);
+        let _ = fs::remove_file(path);
+    }
+
+    // -- edit_file tests --
+
+    #[test]
+    fn test_edit_file_missing_path() {
+        let result = edit_file(&json!({"old_string": "a", "new_string": "b"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_edit_file_missing_old_string() {
+        let result = edit_file(&json!({"path": "/tmp/x.txt", "new_string": "b"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_edit_file_missing_new_string() {
+        let result = edit_file(&json!({"path": "/tmp/x.txt", "old_string": "a"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_edit_file_success() {
+        let path = "/tmp/vsc_test_edit_file.txt";
+        fs::write(path, "hello world").unwrap();
+        let result = edit_file(&json!({"path": path, "old_string": "world", "new_string": "rust"}));
+        assert_eq!(result["success"].as_bool(), Some(true));
+        let content = fs::read_to_string(path).unwrap();
+        assert_eq!(content, "hello rust");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_edit_file_not_found_in_content() {
+        let path = "/tmp/vsc_test_edit_notfound.txt";
+        fs::write(path, "hello world").unwrap();
+        let result = edit_file(&json!({"path": path, "old_string": "xyz", "new_string": "abc"}));
+        assert!(result.get("error").is_some());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_edit_file_ambiguous_match() {
+        let path = "/tmp/vsc_test_edit_ambiguous.txt";
+        fs::write(path, "hello hello world").unwrap();
+        let result = edit_file(&json!({"path": path, "old_string": "hello", "new_string": "hi"}));
+        assert!(result["error"].as_str().unwrap().contains("found 2 times"));
+        let _ = fs::remove_file(path);
+    }
+
+    // -- list_dir tests --
+
+    #[test]
+    fn test_list_dir_nonexistent() {
+        let result = list_dir(&json!({"path": "/tmp/vsc_nonexistent_dir_12345"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_list_dir_sorting() {
+        let dir = "/tmp/vsc_test_list_dir";
+        let _ = fs::remove_dir_all(dir);
+        fs::create_dir_all(format!("{}/zdir", dir)).unwrap();
+        fs::create_dir_all(format!("{}/adir", dir)).unwrap();
+        fs::write(format!("{}/zfile.txt", dir), "z").unwrap();
+        fs::write(format!("{}/afile.txt", dir), "a").unwrap();
+
+        let result = list_dir(&json!({"path": dir}));
+        let entries = result["entries"].as_array().unwrap();
+        // Dirs should come first, then files, both alphabetical
+        assert!(entries[0]["is_dir"].as_bool().unwrap());
+        assert!(entries[1]["is_dir"].as_bool().unwrap());
+        assert!(!entries[2]["is_dir"].as_bool().unwrap());
+        assert!(!entries[3]["is_dir"].as_bool().unwrap());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // -- read_image tests --
+
+    #[test]
+    fn test_read_image_missing_path() {
+        let result = read_image(&json!({}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_read_image_no_extension() {
+        let path = "/tmp/vsc_test_img_noext";
+        fs::write(path, "data").unwrap();
+        let result = read_image(&json!({"path": path}));
+        assert!(result["error"].as_str().unwrap().contains("no extension"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_read_image_unsupported_format() {
+        let result = read_image(&json!({"path": "/tmp/test.tiff"}));
+        assert!(result["error"]
+            .as_str()
+            .unwrap()
+            .contains("Unsupported image format"));
+    }
+
+    #[test]
+    fn test_read_image_png_success() {
+        let path = "/tmp/vsc_test_fake.png";
+        fs::write(path, b"\x89PNG\r\n\x1a\n").unwrap(); // minimal PNG header
+        let result = read_image(&json!({"path": path}));
+        assert!(result.get("inline_data").is_some());
+        assert_eq!(
+            result["inline_data"]["mime_type"].as_str().unwrap(),
+            "image/png"
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_read_image_jpg_mime() {
+        let path = "/tmp/vsc_test_fake.jpg";
+        fs::write(path, b"\xFF\xD8\xFF").unwrap(); // JPEG magic
+        let result = read_image(&json!({"path": path}));
+        assert_eq!(
+            result["inline_data"]["mime_type"].as_str().unwrap(),
+            "image/jpeg"
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    // -- write_file safety tests --
+
+    #[test]
+    fn test_write_file_blocked_lib() {
+        let result = write_file(&json!({"path": "/lib/evil.so", "content": "bad"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_write_file_missing_content() {
+        let result = write_file(&json!({"path": "/tmp/test.txt"}));
+        assert!(result.get("error").is_some());
+    }
+}
