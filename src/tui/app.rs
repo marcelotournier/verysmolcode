@@ -1,0 +1,362 @@
+use std::sync::mpsc;
+use std::thread;
+use crate::agent::AgentLoop;
+use crate::agent::loop_runner::AgentEvent;
+
+#[derive(Debug, Clone)]
+pub enum DisplayMessage {
+    User(String),
+    Assistant(String),
+    ToolCall(String),
+    ToolResult(String),
+    Status(String),
+    Error(String),
+    ModelInfo(String),
+}
+
+pub struct App {
+    pub input: String,
+    pub cursor_pos: usize,
+    pub messages: Vec<DisplayMessage>,
+    pub scroll_offset: u16,
+    pub should_quit: bool,
+    pub is_processing: bool,
+    pub status_line: String,
+    pub model_name: String,
+    pub rate_status: String,
+
+    // Agent communication
+    agent_tx: Option<mpsc::Sender<String>>,
+    event_rx: Option<mpsc::Receiver<AgentEvent>>,
+    done_rx: Option<mpsc::Receiver<()>>,
+
+    // Input history
+    pub input_history: Vec<String>,
+    pub history_index: Option<usize>,
+}
+
+impl App {
+    pub fn new() -> Result<Self, String> {
+        let mut app = Self {
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll_offset: 0,
+            should_quit: false,
+            is_processing: false,
+            status_line: String::new(),
+            model_name: "Ready".to_string(),
+            rate_status: String::new(),
+            agent_tx: None,
+            event_rx: None,
+            done_rx: None,
+            input_history: Vec::new(),
+            history_index: None,
+        };
+
+        // Welcome message
+        app.messages.push(DisplayMessage::Assistant(
+            "Welcome to VerySmolCode! I'm your lightweight coding assistant powered by Gemini.\n\
+             Type /help for available commands. Start typing to ask me anything!".to_string()
+        ));
+
+        // Start the agent thread
+        app.start_agent()?;
+
+        Ok(app)
+    }
+
+    fn start_agent(&mut self) -> Result<(), String> {
+        let (input_tx, input_rx) = mpsc::channel::<String>();
+        let (event_tx, event_rx) = mpsc::channel::<AgentEvent>();
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+
+        self.agent_tx = Some(input_tx);
+        self.event_rx = Some(event_rx);
+        self.done_rx = Some(done_rx);
+
+        thread::spawn(move || {
+            let mut agent = match AgentLoop::new() {
+                Ok(a) => a,
+                Err(e) => {
+                    let _ = event_tx.send(AgentEvent::Status(format!("Error: {}", e)));
+                    let _ = done_tx.send(());
+                    return;
+                }
+            };
+
+            while let Ok(user_input) = input_rx.recv() {
+                let event_tx_clone = event_tx.clone();
+                let result = agent.process_message(&user_input, move |event| {
+                    let _ = event_tx_clone.send(event);
+                });
+
+                if let Err(e) = result {
+                    let _ = event_tx.send(AgentEvent::Status(format!("Error: {}", e)));
+                }
+
+                // Send rate limit status
+                let _ = event_tx.send(AgentEvent::Status(
+                    format!("RATE:{}", agent.rate_limit_status())
+                ));
+
+                let _ = done_tx.send(());
+            }
+        });
+
+        Ok(())
+    }
+
+    pub fn submit_input(&mut self) {
+        let input = self.input.trim().to_string();
+        if input.is_empty() {
+            return;
+        }
+
+        // Save to history
+        self.input_history.push(input.clone());
+        self.history_index = None;
+
+        // Check for slash commands
+        if input.starts_with('/') {
+            let response = crate::tui::commands::handle_command(&input);
+            match response {
+                CommandResponse::Message(msg) => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    self.messages.push(DisplayMessage::Assistant(msg));
+                }
+                CommandResponse::Quit => {
+                    self.should_quit = true;
+                }
+                CommandResponse::Clear => {
+                    self.messages.clear();
+                    if let Some(tx) = &self.agent_tx {
+                        let _ = tx.send("/clear".to_string());
+                    }
+                }
+                CommandResponse::SendToAgent(msg) => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    self.send_to_agent(&msg);
+                }
+            }
+        } else {
+            self.messages.push(DisplayMessage::User(input.clone()));
+            self.send_to_agent(&input);
+        }
+
+        self.input.clear();
+        self.cursor_pos = 0;
+        self.scroll_to_bottom();
+    }
+
+    fn send_to_agent(&mut self, input: &str) {
+        if let Some(tx) = &self.agent_tx {
+            self.is_processing = true;
+            self.model_name = "Connecting...".to_string();
+            let _ = tx.send(input.to_string());
+        }
+    }
+
+    pub fn tick(&mut self) {
+        // Collect events first to avoid borrow issues
+        let events: Vec<AgentEvent> = if let Some(rx) = &self.event_rx {
+            let mut evts = Vec::new();
+            while let Ok(event) = rx.try_recv() {
+                evts.push(event);
+            }
+            evts
+        } else {
+            Vec::new()
+        };
+
+        let mut needs_scroll = false;
+        for event in events {
+            match event {
+                AgentEvent::Text(text) => {
+                    self.messages.push(DisplayMessage::Assistant(text));
+                    needs_scroll = true;
+                }
+                AgentEvent::ToolCall { name, args } => {
+                    let args_str = if let Some(obj) = args.as_object() {
+                        obj.iter()
+                            .map(|(k, v)| {
+                                let val = match v {
+                                    serde_json::Value::String(s) => {
+                                        if s.len() > 60 {
+                                            format!("{}...", &s[..57])
+                                        } else {
+                                            s.clone()
+                                        }
+                                    }
+                                    other => {
+                                        let s = other.to_string();
+                                        if s.len() > 60 {
+                                            format!("{}...", &s[..57])
+                                        } else {
+                                            s
+                                        }
+                                    }
+                                };
+                                format!("{}={}", k, val)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    } else {
+                        args.to_string()
+                    };
+                    self.messages.push(DisplayMessage::ToolCall(
+                        format!("{}({})", name, args_str)
+                    ));
+                    needs_scroll = true;
+                }
+                AgentEvent::ToolResult { name, result } => {
+                    let summary = summarize_tool_result(&name, &result);
+                    self.messages.push(DisplayMessage::ToolResult(summary));
+                    needs_scroll = true;
+                }
+                AgentEvent::ModelSwitch(name) => {
+                    self.model_name = name;
+                }
+                AgentEvent::TokenUpdate { total, .. } => {
+                    self.status_line = format!("Tokens: {}", total);
+                }
+                AgentEvent::Status(s) => {
+                    if let Some(rate) = s.strip_prefix("RATE:") {
+                        self.rate_status = rate.to_string();
+                    } else {
+                        self.messages.push(DisplayMessage::Status(s));
+                        needs_scroll = true;
+                    }
+                }
+            }
+        }
+
+        if needs_scroll {
+            self.scroll_to_bottom();
+        }
+
+        // Check if agent is done
+        let is_done = if let Some(rx) = &self.done_rx {
+            rx.try_recv().is_ok()
+        } else {
+            false
+        };
+        if is_done {
+            self.is_processing = false;
+            self.model_name = "Ready".to_string();
+        }
+    }
+
+    pub fn cancel_processing(&mut self) {
+        self.is_processing = false;
+        self.model_name = "Ready".to_string();
+        self.messages.push(DisplayMessage::Status("Cancelled.".to_string()));
+    }
+
+    pub fn clear_screen(&mut self) {
+        self.messages.clear();
+        self.scroll_offset = 0;
+    }
+
+    pub fn scroll_up(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_add(3);
+    }
+
+    pub fn scroll_down(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(3);
+    }
+
+    fn scroll_to_bottom(&mut self) {
+        self.scroll_offset = 0;
+    }
+
+    pub fn history_up(&mut self) {
+        if self.input_history.is_empty() {
+            return;
+        }
+        let idx = match self.history_index {
+            Some(i) => i.saturating_sub(1),
+            None => self.input_history.len() - 1,
+        };
+        self.history_index = Some(idx);
+        self.input = self.input_history[idx].clone();
+        self.cursor_pos = self.input.len();
+    }
+
+    pub fn history_down(&mut self) {
+        if let Some(idx) = self.history_index {
+            if idx + 1 < self.input_history.len() {
+                let new_idx = idx + 1;
+                self.history_index = Some(new_idx);
+                self.input = self.input_history[new_idx].clone();
+                self.cursor_pos = self.input.len();
+            } else {
+                self.history_index = None;
+                self.input.clear();
+                self.cursor_pos = 0;
+            }
+        }
+    }
+}
+
+pub enum CommandResponse {
+    Message(String),
+    Quit,
+    Clear,
+    SendToAgent(String),
+}
+
+fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
+    if let Some(err) = result.get("error").and_then(|v| v.as_str()) {
+        return format!("[{}] Error: {}", name, err);
+    }
+
+    match name {
+        "read_file" => {
+            let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            let truncated = result.get("truncated").and_then(|v| v.as_bool()).unwrap_or(false);
+            if truncated {
+                let bytes = result.get("total_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                format!("[read_file] {} ({} bytes, truncated)", path, bytes)
+            } else {
+                format!("[read_file] {}", path)
+            }
+        }
+        "write_file" => {
+            let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            let bytes = result.get("bytes_written").and_then(|v| v.as_u64()).unwrap_or(0);
+            format!("[write_file] {} ({} bytes)", path, bytes)
+        }
+        "edit_file" => {
+            let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            format!("[edit_file] {}", path)
+        }
+        "grep_search" => {
+            let matches = result.get("total_matches").and_then(|v| v.as_u64()).unwrap_or(0);
+            format!("[grep] {} matches found", matches)
+        }
+        "git_status" | "git_diff" | "git_log" | "git_commit" | "git_push" | "git_pull" => {
+            let output = result.get("output").and_then(|v| v.as_str()).unwrap_or("");
+            let summary = if output.len() > 100 {
+                format!("{}...", &output[..97])
+            } else {
+                output.to_string()
+            };
+            format!("[{}] {}", name, summary)
+        }
+        "run_command" => {
+            let success = result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+            let exit_code = result.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(-1);
+            if success {
+                format!("[cmd] Exit code: {}", exit_code)
+            } else {
+                let stderr = result.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
+                let summary = if stderr.len() > 80 { &stderr[..77] } else { stderr };
+                format!("[cmd] Failed ({}): {}", exit_code, summary)
+            }
+        }
+        _ => {
+            format!("[{}] Done", name)
+        }
+    }
+}
