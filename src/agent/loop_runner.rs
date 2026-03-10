@@ -85,6 +85,9 @@ impl AgentLoop {
             ToolRegistry::declarations()
         };
 
+        // Add Google Search grounding
+        tools.push(ToolDeclaration::google_search());
+
         // Add MCP tool declarations
         if !self.mcp_clients.is_empty() {
             let mut mcp_decls = Vec::new();
@@ -107,6 +110,7 @@ impl AgentLoop {
             if !mcp_decls.is_empty() {
                 tools.push(ToolDeclaration {
                     function_declarations: mcp_decls,
+                    google_search: None,
                 });
             }
         }

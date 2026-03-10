@@ -89,8 +89,20 @@ pub struct InlineData {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolDeclaration {
-    #[serde(rename = "functionDeclarations")]
+    #[serde(rename = "functionDeclarations", skip_serializing_if = "Vec::is_empty")]
     pub function_declarations: Vec<FunctionDecl>,
+    #[serde(rename = "googleSearch", skip_serializing_if = "Option::is_none")]
+    pub google_search: Option<serde_json::Value>,
+}
+
+impl ToolDeclaration {
+    /// Create a google_search grounding tool
+    pub fn google_search() -> Self {
+        Self {
+            function_declarations: Vec::new(),
+            google_search: Some(serde_json::json!({})),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

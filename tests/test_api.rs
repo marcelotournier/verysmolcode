@@ -240,6 +240,7 @@ fn test_build_request_without_thinking() {
 #[test]
 fn test_build_request_with_tools() {
     let tools = vec![ToolDeclaration {
+        google_search: None,
         function_declarations: vec![FunctionDecl {
             name: "test_tool".to_string(),
             description: "A test tool".to_string(),
@@ -380,4 +381,17 @@ fn test_extract_response_no_content() {
     let (texts, calls) = extract_response(&response);
     assert!(texts.is_empty());
     assert!(calls.is_empty());
+}
+
+#[test]
+fn test_google_search_tool_declaration() {
+    let tool = ToolDeclaration::google_search();
+    assert!(tool.function_declarations.is_empty());
+    assert!(tool.google_search.is_some());
+
+    // Should serialize with googleSearch key
+    let json = serde_json::to_value(&tool).unwrap();
+    assert!(json.get("googleSearch").is_some());
+    // functionDeclarations should be omitted when empty
+    assert!(json.get("functionDeclarations").is_none());
 }

@@ -30,6 +30,7 @@ pub fn execute_tool(name: &str, args: &Value) -> Value {
 /// Get all tool declarations for the Gemini API
 pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
     vec![ToolDeclaration {
+        google_search: None,
         function_declarations: vec![
             FunctionDecl {
                 name: "read_file".to_string(),
@@ -331,6 +332,7 @@ impl ToolRegistry {
         ];
 
         vec![ToolDeclaration {
+            google_search: None,
             function_declarations: all[0]
                 .function_declarations
                 .iter()
