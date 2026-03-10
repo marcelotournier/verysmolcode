@@ -162,7 +162,7 @@ jobs:
           path: dist
       - name: Install wheel and verify
         run: |
-          pip install dist/*.whl
+          pip install verysmolcode --no-index --find-links dist/
           python -c "import verysmolcode; print('Version:', verysmolcode.version())"
 
   publish-pypi:
