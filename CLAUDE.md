@@ -183,6 +183,14 @@
 - [x] Smarter thinking token preservation: keep last 3 messages' thinking for multi-turn reasoning
 - [x] 547 unit tests
 
+## Completed (v0.9.7)
+- [x] Hardened save_conversation: path traversal protection, absolute paths
+- [x] Fixed flaky MCP tests with process-unique server names
+- [x] 60s web_fetch timeout for slow RPi3 Wi-Fi connections
+- [x] Fixed Ctrl+W not updating suggestion popup
+- [x] Undo history committed before critic (prevents data loss on critic failure)
+- [x] stderr truncation in run_command (prevents token bloat from verbose output)
+
 # Lessons Learned
 
 ## TLS Crate Selection
