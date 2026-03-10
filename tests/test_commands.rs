@@ -383,6 +383,38 @@ fn test_config_set_compact_threshold_invalid() {
     assert!(msg.contains("Error"));
 }
 
+// -- Command timeout config tests --
+
+#[test]
+fn test_config_set_command_timeout() {
+    let msg = get_message("/config set command_timeout 30");
+    assert!(msg.contains("Command timeout set to 30s"));
+}
+
+#[test]
+fn test_config_set_timeout_alias() {
+    let msg = get_message("/config set timeout 45");
+    assert!(msg.contains("Command timeout set to 45s"));
+}
+
+#[test]
+fn test_config_set_timeout_clamp_low() {
+    let msg = get_message("/config set timeout 1");
+    assert!(msg.contains("Command timeout set to 5s"));
+}
+
+#[test]
+fn test_config_set_timeout_clamp_high() {
+    let msg = get_message("/config set timeout 9999");
+    assert!(msg.contains("Command timeout set to 600s"));
+}
+
+#[test]
+fn test_config_set_timeout_invalid() {
+    let msg = get_message("/config set timeout abc");
+    assert!(msg.contains("Error"));
+}
+
 // -- Safety alias tests --
 
 #[test]

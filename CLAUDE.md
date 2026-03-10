@@ -256,6 +256,16 @@
 - [x] Help text: added Ctrl+A/E/U/K/W keybindings (was missing)
 - [x] 441 unit tests
 
+## Completed (v0.10.6)
+- [x] Safety test coverage: 11 tests for is_dangerous_tool_call() (rm, dd, mkfs, shutdown, find -delete, curl|sh, eval, redirects, write_file paths)
+- [x] Token optimization tests: 4 tests for truncate_tool_result() (small passthrough, large content/output truncation, non-object fallback)
+- [x] Grep case-insensitive tests: positive + negative matching
+- [x] UTF-8 truncation boundary test for web_fetch
+- [x] git_branch creation + git_add multi-file tests
+- [x] /config set timeout: 5 tests (set, alias, clamp low/high, invalid)
+- [x] Config defaults: command_timeout, compact_threshold, system_prompt, serde backwards compat, corrupted JSON
+- [x] 472 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection

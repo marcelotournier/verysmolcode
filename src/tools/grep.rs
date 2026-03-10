@@ -341,6 +341,36 @@ mod tests {
     }
 
     #[test]
+    fn test_grep_search_case_insensitive() {
+        let dir = make_temp_dir("case_insensitive");
+        fs::write(dir.join("mixed.txt"), "Hello WORLD hElLo").unwrap();
+
+        let result = grep_search(&json!({
+            "pattern": "hello",
+            "path": dir.to_str().unwrap()
+        }));
+        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(matches.len(), 1);
+        // The line contains both "Hello" and "hElLo" — case-insensitive match found it
+        assert!(matches[0]["content"].as_str().unwrap().contains("Hello"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_grep_search_case_insensitive_no_match() {
+        let dir = make_temp_dir("case_no_match");
+        fs::write(dir.join("nope.txt"), "Goodbye WORLD").unwrap();
+
+        let result = grep_search(&json!({
+            "pattern": "hello",
+            "path": dir.to_str().unwrap()
+        }));
+        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(matches.len(), 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_collect_files_skips_node_modules() {
         let dir = make_temp_dir("node_modules_skip");
         let nm = dir.join("node_modules");

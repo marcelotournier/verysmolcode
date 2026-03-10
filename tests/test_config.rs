@@ -34,6 +34,49 @@ fn test_config_paths() {
 }
 
 #[test]
+fn test_config_command_timeout_default() {
+    let config = Config::default();
+    assert_eq!(config.command_timeout, 60);
+}
+
+#[test]
+fn test_config_auto_compact_threshold_default() {
+    let config = Config::default();
+    assert_eq!(config.auto_compact_threshold, 24000);
+}
+
+#[test]
+fn test_config_system_prompt_contains_cwd() {
+    let config = Config::default();
+    // System prompt should include the working directory
+    assert!(config.system_prompt.contains("Working directory"));
+}
+
+#[test]
+fn test_config_deserialize_missing_timeout() {
+    // Old config files won't have command_timeout — serde(default) should fill it
+    let json = r#"{
+        "max_tokens_per_response": 4096,
+        "max_conversation_tokens": 32000,
+        "temperature": 0.7,
+        "auto_compact_threshold": 24000,
+        "system_prompt": "test",
+        "safety_enabled": true
+    }"#;
+    let config: Config = serde_json::from_str(json).unwrap();
+    assert_eq!(config.command_timeout, 60); // default
+}
+
+#[test]
+fn test_config_deserialize_corrupted_json() {
+    // Corrupted JSON should not panic — Config::load() falls back to default.
+    // We can't easily test load() without touching the file system, but we can
+    // verify serde gracefully rejects bad input.
+    let result: Result<Config, _> = serde_json::from_str("{ invalid json }}}");
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_mcp_config_default() {
     let config = McpConfig::default();
     assert!(config.servers.is_empty());

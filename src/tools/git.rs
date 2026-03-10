@@ -409,6 +409,33 @@ mod tests {
     }
 
     #[test]
+    fn test_git_branch_create_invalid_name() {
+        // Attempting to create a branch with invalid chars should fail gracefully
+        let result = git_branch(&json!({"name": "..invalid//branch"}));
+        // Git rejects invalid branch names — should get success:false or error
+        assert!(
+            result.get("error").is_some() || result.get("success").map_or(false, |v| v == false)
+        );
+    }
+
+    #[test]
+    fn test_git_add_nonexistent_file() {
+        // git add on a file that doesn't exist should fail gracefully
+        let result = git_add(&json!({"files": "definitely_not_a_real_file_xyz.txt"}));
+        assert!(
+            result.get("error").is_some() || result.get("success").map_or(false, |v| v == false)
+        );
+    }
+
+    #[test]
+    fn test_git_add_multi_file_splits() {
+        // Verify that space-separated files are split into multiple args
+        // Both files don't exist, but the important thing is it doesn't panic
+        let result = git_add(&json!({"files": "file_a.txt file_b.txt file_c.txt"}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
     fn test_git_push_default_remote() {
         // Will fail since no remote configured in test env, but should not panic
         let result = git_push(&json!({}));

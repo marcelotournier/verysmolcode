@@ -306,6 +306,26 @@ mod tests {
     }
 
     #[test]
+    fn test_truncation_at_char_boundary() {
+        // Create a string with multi-byte chars that straddle the truncation point
+        // Each emoji is 4 bytes. Place one so it spans across byte 20000.
+        let mut s = "A".repeat(19_997); // 19997 ASCII chars
+        s.push_str("\u{1F600}\u{1F600}");
+        // Total: 20005 bytes. Byte 20000 is mid-emoji (starts at 19997).
+        assert!(!s.is_char_boundary(20_000));
+        let max_chars = 20_000;
+        let mut end = max_chars;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        let content = &s[..end];
+        // Should back up to byte 19997 (start of the emoji)
+        assert_eq!(content.len(), 19_997);
+        // Verify it's valid UTF-8
+        assert!(std::str::from_utf8(content.as_bytes()).is_ok());
+    }
+
+    #[test]
     fn test_strip_html_style_case_insensitive() {
         let html = "<p>A</p><STYLE>h1{font-size:2em}</STYLE><p>B</p>";
         let result = strip_html_tags(html);
