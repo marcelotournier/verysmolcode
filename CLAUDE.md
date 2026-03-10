@@ -232,6 +232,13 @@
 - [x] duration_ms added to AgentEvent::ToolResult (0 for blocked calls)
 - [x] TUI shows timing in tool result summary (e.g. "read_file: ok (12ms)")
 - [x] CLI mode also shows timing in tool result line
+- [x] Robustness: stdin read errors reported (not silently swallowed)
+- [x] Robustness: MCP stderr capped at 32KB (prevents OOM on chatty servers)
+- [x] Robustness: saturating arithmetic for token count (prevents u32 overflow)
+- [x] Robustness: early-exit topic collection in compaction (pre-allocated, stops at 5)
+- [x] HTML stripper: <style> blocks now stripped (saves tokens on web fetches)
+- [x] HTML stripper refactored with generic hidden-tag system (script + style)
+- [x] 2 new tests: style stripping, case-insensitive STYLE tags
 
 # Lessons Learned
 
