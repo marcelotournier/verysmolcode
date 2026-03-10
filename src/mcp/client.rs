@@ -89,6 +89,9 @@ impl McpClient {
         self.request_id
     }
 
+    /// MCP request timeout (30s for tool calls, initialization uses this too)
+    const REQUEST_TIMEOUT_SECS: u64 = 30;
+
     fn send_request(&mut self, request: &JsonRpcRequest) -> Result<JsonRpcResponse, String> {
         let stdin = self
             .process
@@ -107,11 +110,21 @@ impl McpClient {
         stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
 
         // Read response using persistent BufReader (preserves buffered data between calls)
+        // Timeout prevents hung MCP servers from blocking the agent indefinitely
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(Self::REQUEST_TIMEOUT_SECS);
         let mut line = String::new();
 
         // Read lines until we get a valid JSON-RPC response (max 1000 lines to prevent infinite loop)
         let max_lines = 1000;
         for _ in 0..max_lines {
+            if std::time::Instant::now() >= deadline {
+                return Err(format!(
+                    "MCP server '{}' timed out after {}s",
+                    self.name,
+                    Self::REQUEST_TIMEOUT_SECS
+                ));
+            }
             line.clear();
             match self.stdout_reader.read_line(&mut line) {
                 Ok(0) => {

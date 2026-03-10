@@ -28,24 +28,25 @@ pub fn grep_search(args: &Value) -> Value {
     collect_files(&search_path, include, &mut files);
 
     // Phase 2: Search files in parallel with rayon
+    // Use SeqCst ordering for tighter result count control on multi-core
     let count = AtomicUsize::new(0);
+    let pattern_lower = pattern.to_lowercase();
     let results: Vec<Value> = files
         .par_iter()
         .flat_map(|file_path| {
-            if count.load(Ordering::Relaxed) >= max_results {
+            if count.load(Ordering::SeqCst) >= max_results {
                 return Vec::new();
             }
 
-            let pattern_lower = pattern.to_lowercase();
             let mut matches = Vec::new();
 
             if let Ok(content) = fs::read_to_string(file_path) {
                 for (line_num, line) in content.lines().enumerate() {
-                    if count.load(Ordering::Relaxed) >= max_results {
+                    if count.load(Ordering::SeqCst) >= max_results {
                         break;
                     }
                     if line.to_lowercase().contains(&pattern_lower) {
-                        count.fetch_add(1, Ordering::Relaxed);
+                        count.fetch_add(1, Ordering::SeqCst);
                         matches.push(json!({
                             "file": file_path.display().to_string(),
                             "line": line_num + 1,
@@ -58,14 +59,15 @@ pub fn grep_search(args: &Value) -> Value {
         })
         .collect();
 
-    // Trim to max_results (rayon may slightly overshoot due to parallelism)
+    // Trim to exact max_results (rayon may overshoot slightly due to parallelism)
     let trimmed: Vec<Value> = results.into_iter().take(max_results).collect();
+    let total = trimmed.len();
 
     json!({
         "pattern": pattern,
         "path": search_path.display().to_string(),
         "matches": trimmed,
-        "total_matches": trimmed.len()
+        "total_matches": total
     })
 }
 

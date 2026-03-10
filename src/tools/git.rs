@@ -67,17 +67,27 @@ fn run_git(args: &[&str]) -> Value {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     let max_output = 10_000;
+                    let truncated = stdout.len() > max_output || stderr.len() > max_output;
                     if output.status.success() {
-                        json!({
+                        let mut result = json!({
                             "success": true,
                             "output": safe_truncate(stdout.trim(), max_output)
-                        })
+                        });
+                        if truncated {
+                            result["truncated"] = json!(true);
+                            result["total_bytes"] = json!(stdout.len());
+                        }
+                        result
                     } else {
-                        json!({
+                        let mut result = json!({
                             "success": false,
                             "error": safe_truncate(stderr.trim(), max_output),
                             "output": safe_truncate(stdout.trim(), max_output)
-                        })
+                        });
+                        if truncated {
+                            result["truncated"] = json!(true);
+                        }
+                        result
                     }
                 }
                 Err(e) => json!({"error": e}),
@@ -240,13 +250,19 @@ pub fn run_shell(args: &Value) -> Value {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let max_len = 10_000;
+                let truncated = stdout.len() > max_len || stderr.len() > max_len;
 
-                json!({
+                let mut result = json!({
                     "success": output.status.success(),
                     "exit_code": output.status.code(),
                     "stdout": safe_truncate(stdout.trim(), max_len),
                     "stderr": safe_truncate(stderr.trim(), max_len)
-                })
+                });
+                if truncated {
+                    result["truncated"] = json!(true);
+                    result["total_stdout_bytes"] = json!(stdout.len());
+                }
+                result
             }
             Err(e) => json!({"error": e}),
         },
