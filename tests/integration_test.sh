@@ -17,6 +17,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo -e "${YELLOW}VerySmolCode Integration Test${NC}"
 echo "=============================="
 
@@ -48,7 +50,7 @@ echo "Test directory: $TEST_DIR"
 
 # Create tmux session
 SESSION="vsc_test_$$"
-tmux new-session -d -s "$SESSION" -x 80 -y 30
+tmux new-session -d -s "$SESSION" -x 120 -y 40
 
 # Set working directory and start vsc
 tmux send-keys -t "$SESSION" "cd $TEST_DIR && GEMINI_API_KEY=$GEMINI_API_KEY $VSC" Enter
@@ -60,9 +62,17 @@ sleep 5
 echo "TUI initialized, screen capture:"
 tmux capture-pane -t "$SESSION" -p 2>/dev/null | head -5
 
-# Send the test command
+# Send the test command with clear specs for what to build
 echo "Sending test command..."
-tmux send-keys -t "$SESSION" "Create a simple todo list app using Python bottle.py. The app should have: 1) Add todo item 2) List all items 3) Mark item as done 4) Delete item. Create app.py and requirements.txt." Enter
+PROMPT="Create a Python todo list app using the bottle web framework. Requirements:
+1. Create app.py with these routes: GET / to list todos, POST /add to add a todo, POST /done/<id> to mark done, POST /delete/<id> to delete
+2. Create requirements.txt with bottle as dependency
+3. Use an in-memory list to store todos (no database needed)
+4. The app should run on port 18765 (read from BOTTLE_PORT env var with default 18765)
+5. Each todo should have: id (int), text (str), done (bool)
+6. Import bottle at the top of app.py
+Please create both files now."
+tmux send-keys -t "$SESSION" "$PROMPT" Enter
 
 # Wait for the agent to work (generous timeout for free tier)
 echo "Waiting for agent to complete (up to 180 seconds)..."
@@ -76,17 +86,19 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     # Capture tmux screen for debugging
     if [ $((ELAPSED % 30)) -eq 0 ]; then
         echo "--- tmux screen capture ---"
-        tmux capture-pane -t "$SESSION" -p 2>/dev/null | tail -10
+        tmux capture-pane -t "$SESSION" -p 2>/dev/null | tail -15
         echo "--- end capture ---"
     fi
 
     # Check if files were created
     if [ -f "$TEST_DIR/app.py" ] && [ -f "$TEST_DIR/requirements.txt" ]; then
         echo -e "${GREEN}Files detected!${NC}"
+        # Give agent a moment to finish writing
+        sleep 3
         break
     fi
 
-    # Also check what files exist in test dir
+    # Show files at timeout
     if [ $ELAPSED -eq $TIMEOUT ]; then
         echo "Files in test dir:"
         ls -la "$TEST_DIR/" 2>/dev/null || echo "(empty)"
@@ -100,7 +112,7 @@ sleep 1
 # Kill tmux session
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-# Verify results
+# ===== Verification =====
 echo ""
 echo "Verification:"
 echo "============="
@@ -151,6 +163,29 @@ if [ -f "$TEST_DIR/app.py" ] && grep -q "route\|@get\|@post" "$TEST_DIR/app.py";
 else
     echo -e "${RED}[FAIL] app.py has no route definitions${NC}"
     FAIL=$((FAIL + 1))
+fi
+
+# Check 6: Python syntax is valid
+if [ -f "$TEST_DIR/app.py" ]; then
+    if python3 -c "import ast; ast.parse(open('$TEST_DIR/app.py').read())" 2>/dev/null; then
+        echo -e "${GREEN}[PASS] app.py has valid Python syntax${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}[FAIL] app.py has syntax errors${NC}"
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo -e "${RED}[FAIL] app.py missing, can't check syntax${NC}"
+    FAIL=$((FAIL + 1))
+fi
+
+# ===== Pytest checks (if basic checks passed) =====
+if [ $PASS -ge 5 ] && command -v python3 &> /dev/null; then
+    echo ""
+    echo "Running pytest validation..."
+    pip install bottle pytest -q 2>/dev/null || true
+    export VSC_TEST_DIR="$TEST_DIR"
+    python3 -m pytest "$SCRIPT_DIR/test_vibecoded_app.py" -v --tb=short 2>&1 || true
 fi
 
 # Cleanup
