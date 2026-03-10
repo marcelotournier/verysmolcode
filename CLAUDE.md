@@ -75,6 +75,12 @@
 - [x] 101 unit tests across 5 test files
 - [x] GitHub Releases with release notes (v0.7.7, v0.7.8)
 
+## Completed (v0.7.9)
+- [x] 181 unit tests across 8 test files (+ inline tests)
+- [x] Test coverage: agent loop helpers, MCP types, tool registry, TUI summarizer
+- [x] Improved safety: catch curl/wget URL | sh/bash/zsh pipe patterns
+- [x] Exported agent helper functions for external test access
+
 ## Planned
 - [ ] macOS and Windows wheel builds in CI
 - [ ] /undo command to revert last file changes
