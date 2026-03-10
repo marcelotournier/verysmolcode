@@ -73,7 +73,8 @@ fn test_truncate_preserves_small_object() {
 // -- strip_thinking_from_history tests --
 
 #[test]
-fn test_strip_thinking_removes_thought_parts() {
+fn test_strip_thinking_preserves_recent() {
+    // Single message is within last 3 — thinking should be preserved
     let mut conversation = vec![Content {
         role: Some("model".to_string()),
         parts: vec![
@@ -87,11 +88,8 @@ fn test_strip_thinking_removes_thought_parts() {
 
     strip_thinking_from_history(&mut conversation);
 
-    assert_eq!(conversation[0].parts.len(), 1);
-    match &conversation[0].parts[0] {
-        Part::Text { text } => assert_eq!(text, "Here's my answer"),
-        _ => panic!("Expected text part"),
-    }
+    // Thought preserved because it's in the last 3 messages
+    assert_eq!(conversation[0].parts.len(), 2);
 }
 
 #[test]
@@ -114,7 +112,63 @@ fn test_strip_thinking_empty_conversation() {
 }
 
 #[test]
-fn test_strip_thinking_multiple_messages() {
+fn test_strip_thinking_strips_old_keeps_recent() {
+    // 5 messages: old ones get stripped, last 3 keep thinking
+    let mut conversation = vec![
+        Content {
+            role: Some("model".to_string()),
+            parts: vec![
+                Part::Thought {
+                    thought: true,
+                    text: "old thinking 1".to_string(),
+                },
+                Part::text("answer 1"),
+            ],
+        },
+        Content {
+            role: Some("model".to_string()),
+            parts: vec![
+                Part::Thought {
+                    thought: true,
+                    text: "old thinking 2".to_string(),
+                },
+                Part::text("answer 2"),
+            ],
+        },
+        Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text("question 3")],
+        },
+        Content {
+            role: Some("model".to_string()),
+            parts: vec![
+                Part::Thought {
+                    thought: true,
+                    text: "recent thinking".to_string(),
+                },
+                Part::text("answer 3"),
+            ],
+        },
+        Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text("followup")],
+        },
+    ];
+
+    strip_thinking_from_history(&mut conversation);
+
+    // First 2 messages (index 0, 1) are old — thinking stripped
+    assert_eq!(conversation[0].parts.len(), 1); // thought removed
+    assert_eq!(conversation[1].parts.len(), 1); // thought removed
+                                                // Last 3 messages (index 2, 3, 4) — thinking preserved
+    assert_eq!(conversation[2].parts.len(), 1); // user, no thought
+    assert_eq!(conversation[3].parts.len(), 2); // model, thought kept
+    assert_eq!(conversation[4].parts.len(), 1); // user, no thought
+}
+
+#[test]
+fn test_strip_thinking_three_messages_all_kept() {
+    // Exactly 3 messages — all within "last 3", so nothing stripped
     let mut conversation = vec![
         Content {
             role: Some("user".to_string()),
@@ -139,7 +193,7 @@ fn test_strip_thinking_multiple_messages() {
     strip_thinking_from_history(&mut conversation);
 
     assert_eq!(conversation[0].parts.len(), 1); // user unchanged
-    assert_eq!(conversation[1].parts.len(), 1); // model: thought removed
+    assert_eq!(conversation[1].parts.len(), 2); // model: thought kept (within last 3)
     assert_eq!(conversation[2].parts.len(), 1); // user unchanged
 }
 

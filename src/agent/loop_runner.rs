@@ -90,13 +90,16 @@ pub fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
     serde_json::json!(format!("{}...[truncated, {} chars total]", cut, s.len()))
 }
 
-/// Strip thinking/thought parts from conversation history to save tokens on resend.
-/// Thinking tokens are useful for the model's reasoning but shouldn't be sent back.
+/// Strip thinking/thought parts from older conversation history to save tokens.
+/// Keeps thinking from the last 3 messages so multi-turn reasoning context isn't lost.
 pub fn strip_thinking_from_history(conversation: &mut [Content]) {
-    for content in conversation.iter_mut() {
-        content
-            .parts
-            .retain(|part| !matches!(part, Part::Thought { .. }));
+    let keep_from = conversation.len().saturating_sub(3);
+    for (i, content) in conversation.iter_mut().enumerate() {
+        if i < keep_from {
+            content
+                .parts
+                .retain(|part| !matches!(part, Part::Thought { .. }));
+        }
     }
 }
 
