@@ -25,6 +25,31 @@ fn next_char_boundary(s: &str, pos: usize) -> usize {
     s.len()
 }
 
+/// Find the start position of the previous word (for Ctrl+W delete-word-backward).
+/// Skips trailing whitespace, then backs up through non-whitespace chars.
+fn word_start(input: &str, cursor: usize) -> usize {
+    let mut pos = cursor;
+    // Skip trailing whitespace
+    while pos > 0 {
+        let prev = prev_char_boundary(input, pos);
+        if input[prev..pos].trim().is_empty() {
+            pos = prev;
+        } else {
+            break;
+        }
+    }
+    // Back up through the word
+    while pos > 0 {
+        let prev = prev_char_boundary(input, pos);
+        if !input[prev..pos].trim().is_empty() {
+            pos = prev;
+        } else {
+            break;
+        }
+    }
+    pos
+}
+
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     if app.is_processing {
         // Only allow scrolling while processing
@@ -61,23 +86,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     }
                     'w' => {
                         // Delete word backward (char-boundary aware)
-                        let mut pos = app.cursor_pos;
-                        while pos > 0 {
-                            let prev = prev_char_boundary(&app.input, pos);
-                            if app.input[prev..pos].trim().is_empty() {
-                                pos = prev;
-                            } else {
-                                break;
-                            }
-                        }
-                        while pos > 0 {
-                            let prev = prev_char_boundary(&app.input, pos);
-                            if !app.input[prev..pos].trim().is_empty() {
-                                pos = prev;
-                            } else {
-                                break;
-                            }
-                        }
+                        let pos = word_start(&app.input, app.cursor_pos);
                         app.input.drain(pos..app.cursor_pos);
                         app.cursor_pos = pos;
                     }
@@ -208,5 +217,64 @@ mod tests {
         let s = "a\u{1F600}b"; // a + 4-byte emoji + b
         assert_eq!(next_char_boundary(s, 0), 1); // after a -> emoji start
         assert_eq!(next_char_boundary(s, 1), 5); // after emoji -> b
+    }
+
+    // -- word_start tests (Ctrl+W behavior) --
+
+    #[test]
+    fn test_word_start_basic() {
+        let s = "hello world";
+        // Cursor at end: should delete "world"
+        assert_eq!(word_start(s, 11), 6);
+    }
+
+    #[test]
+    fn test_word_start_middle_of_word() {
+        let s = "hello world";
+        // Cursor in middle of "world": should delete to start of "world"
+        assert_eq!(word_start(s, 8), 6);
+    }
+
+    #[test]
+    fn test_word_start_at_space() {
+        let s = "hello world";
+        // Cursor right after space: should skip space and delete "hello"
+        assert_eq!(word_start(s, 6), 0);
+    }
+
+    #[test]
+    fn test_word_start_multiple_spaces() {
+        let s = "one   two";
+        // Cursor at end: should skip to start of "two"
+        assert_eq!(word_start(s, 9), 6);
+    }
+
+    #[test]
+    fn test_word_start_beginning() {
+        let s = "hello";
+        // Cursor at beginning: no change
+        assert_eq!(word_start(s, 0), 0);
+    }
+
+    #[test]
+    fn test_word_start_single_word() {
+        let s = "hello";
+        // Cursor at end: delete entire word
+        assert_eq!(word_start(s, 5), 0);
+    }
+
+    #[test]
+    fn test_word_start_three_words() {
+        let s = "one two three";
+        assert_eq!(word_start(s, 13), 8); // delete "three"
+        assert_eq!(word_start(s, 7), 4); // delete "two"
+        assert_eq!(word_start(s, 3), 0); // delete "one"
+    }
+
+    #[test]
+    fn test_word_start_slash_command() {
+        let s = "/help something";
+        assert_eq!(word_start(s, 15), 6); // delete "something"
+        assert_eq!(word_start(s, 5), 0); // delete "/help"
     }
 }
