@@ -305,7 +305,31 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
         format!("VerySmolCode v{}", env!("CARGO_PKG_VERSION"))
     };
 
-    let right = if !app.status_line.is_empty() {
+    let total_tokens = app.total_input_tokens + app.total_output_tokens;
+    let right = if total_tokens > 0 {
+        // Show context bar: [||||      ] 12.5K/24K
+        let threshold = app.conversation_tokens.max(1) as f64;
+        let auto_compact = crate::config::Config::load().auto_compact_threshold;
+        let ratio = (app.conversation_tokens as f64) / (auto_compact as f64);
+        let bar_width = 8;
+        let filled = ((ratio * bar_width as f64).round() as usize).min(bar_width);
+        let bar_char = if ratio > 0.8 { '!' } else { '|' };
+        let bar = format!(
+            "[{}{}]",
+            std::iter::repeat_n(bar_char, filled).collect::<String>(),
+            std::iter::repeat_n(' ', bar_width - filled).collect::<String>(),
+        );
+        let color_hint = if ratio > 0.8 { " \u{26A0}" } else { "" };
+        format!(
+            "{} {:.1}K/{:.0}K ctx{}  In:{} Out:{}",
+            bar,
+            threshold / 1000.0,
+            auto_compact as f64 / 1000.0,
+            color_hint,
+            format_token_count(app.total_input_tokens),
+            format_token_count(app.total_output_tokens),
+        )
+    } else if !app.status_line.is_empty() {
         format!("\u{1F4CA} {}", app.status_line)
     } else {
         "\u{1F4A1} Ctrl+C/D: quit | /help".to_string()
@@ -324,6 +348,16 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     );
 
     f.render_widget(bar, area);
+}
+
+fn format_token_count(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K", count as f64 / 1_000.0)
+    } else {
+        format!("{}", count)
+    }
 }
 
 fn draw_suggestions(f: &mut Frame, input_area: Rect, app: &App) {

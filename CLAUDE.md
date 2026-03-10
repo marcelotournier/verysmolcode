@@ -297,6 +297,12 @@
 - [x] Green-themed file suggestion popup (distinct from blue command popup)
 - [x] 492 unit tests
 
+## Completed (v0.11.3) — Context Window Visualization
+- [x] Visual token usage bar in status line: [||||    ] 12.5K/24K ctx
+- [x] Warning indicator when context > 80% full
+- [x] Session token counts (In/Out) always visible in status bar
+- [x] Human-readable token formatting (K/M suffixes)
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -337,10 +343,10 @@ These are table-stakes features that both OpenCode and Claude Code have.
 - [ ] Per-turn diff tracking (what changed in this response)
 - [ ] Side-by-side or unified diff view (width-adaptive)
 
-### P1.6 - Context Window Visualization
-- [ ] /context command showing colored grid of token usage
-- [ ] Visual indicator of how full the context window is
-- [ ] Warning when approaching auto-compact threshold
+### P1.6 - Context Window Visualization ✅ (v0.11.3)
+- [x] Visual indicator in status bar showing context fullness
+- [x] Warning when approaching auto-compact threshold (>80%)
+- [x] Human-readable token counts (In/Out) always visible
 
 ## Phase 2: Session & Navigation (v0.12.x)
 Features that improve workflow continuity.
