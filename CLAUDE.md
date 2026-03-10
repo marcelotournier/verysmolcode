@@ -270,7 +270,193 @@
 - [x] Ctrl+D to quit (Unix EOF convention, only when input is empty)
 - [x] Fixed MCP client BufReader data loss: persistent reader across requests
 - [x] MCP notification serialization: skip instead of sending empty string on failure
+- [x] Styled welcome screen: ratatui Span-based gradient logo replaces ASCII art
+- [x] Fixed context7 MCP package name: @anthropic-ai -> @upstash/context7-mcp
 - [x] 474 unit tests
+
+# Long-Term Roadmap: OpenCode + Claude Code Feature Parity
+
+## Design Principles for VSC
+- All features must work on RPi3 (1GB RAM, 80x30 terminal)
+- Gemini free tier limits drive architecture (unlike Claude/OpenCode which have paid APIs)
+- Sync-first design (no async runtime) to keep binary small
+- Every feature must consider token budget impact
+
+## Phase 1: Core UX Improvements (v0.11.x) — HIGH PRIORITY
+These are table-stakes features that both OpenCode and Claude Code have.
+
+### P1.1 - Session Persistence & Resume
+- [ ] Save conversations to disk (SQLite or JSON files)
+- [ ] /resume command to list and resume past sessions
+- [ ] /new command to start fresh session (currently /clear)
+- [ ] Auto-save on exit, load on resume
+- [ ] Session naming (auto from first message + manual /rename)
+- [ ] Session cleanup after N days
+
+### P1.2 - File Reference with @ Autocomplete
+- [ ] Type @ to trigger file path autocomplete dropdown
+- [ ] Fuzzy matching against project files
+- [ ] @file.rs#10-25 line range syntax
+- [ ] File content injected into conversation context
+- [ ] Frecency ranking (recently used files first)
+
+### P1.3 - Multi-Line Input
+- [ ] Shift+Enter or \ + Enter for multi-line input
+- [ ] Visual indicator showing multi-line mode
+- [ ] Paste detection (auto multi-line for pasted content)
+
+### P1.4 - Bash Mode (! prefix)
+- [ ] Type !command to run shell directly without AI
+- [ ] Output displayed in TUI and added to conversation context
+- [ ] History integration
+
+### P1.5 - Improved Diff Display
+- [ ] /diff command showing git diff with syntax coloring
+- [ ] Per-turn diff tracking (what changed in this response)
+- [ ] Side-by-side or unified diff view (width-adaptive)
+
+### P1.6 - Context Window Visualization
+- [ ] /context command showing colored grid of token usage
+- [ ] Visual indicator of how full the context window is
+- [ ] Warning when approaching auto-compact threshold
+
+## Phase 2: Session & Navigation (v0.12.x)
+Features that improve workflow continuity.
+
+### P2.1 - Rewind / Checkpoint System
+- [ ] Track state before each edit (extend current /undo)
+- [ ] /rewind command with interactive checkpoint picker
+- [ ] Restore code, conversation, or both
+- [ ] Visual checkpoint markers in message history
+
+### P2.2 - Command Palette
+- [ ] Ctrl+P opens searchable command palette
+- [ ] All slash commands + descriptions in fuzzy-filterable list
+- [ ] MCP tools listed alongside built-in commands
+
+### P2.3 - Reverse Search History
+- [ ] Ctrl+R for interactive history search
+- [ ] Highlight matches as you type
+- [ ] Select and re-execute from history
+
+### P2.4 - Leader Key System
+- [ ] Configurable leader key (default Ctrl+X)
+- [ ] Two-key combos: Leader+N new, Leader+L list sessions, etc.
+- [ ] Discoverable via /help
+
+### P2.5 - Fork Sessions
+- [ ] /fork to branch conversation at current point
+- [ ] Independent exploration without losing original thread
+
+## Phase 3: Advanced Agent Features (v0.13.x)
+Features that make the agent more capable.
+
+### P3.1 - Subagent / Background Tasks
+- [ ] Spawn lightweight sub-tasks (e.g., Explore agent for codebase search)
+- [ ] Background task execution with notification on completion
+- [ ] /tasks command to list running background work
+- [ ] Ctrl+B to background current task
+
+### P3.2 - Permission Modes
+- [ ] Normal: prompt for writes (current behavior)
+- [ ] Auto-accept: skip permission for file edits
+- [ ] Plan-only: read-only tools (current /plan, make it a mode toggle)
+- [ ] Configurable per-tool permissions
+
+### P3.3 - Hooks System (Lightweight)
+- [ ] Pre-tool-use hooks (block/allow specific operations)
+- [ ] Post-tool-use hooks (run lint after edit, test after write)
+- [ ] Session start hooks (auto-load context)
+- [ ] JSON config in .vsc/hooks.json
+
+### P3.4 - Structured Output Mode
+- [ ] --json-schema flag for validated JSON output
+- [ ] Useful for scripting/CI integration
+- [ ] --print / -p non-interactive mode
+
+### P3.5 - /simplify Command
+- [ ] Review changed code for reuse, quality, efficiency
+- [ ] Auto-fix issues found
+- [ ] Uses critic model to keep costs low
+
+## Phase 4: Polish & Ecosystem (v0.14.x)
+Nice-to-have features for power users.
+
+### P4.1 - Theme System
+- [ ] JSON-based theme configuration
+- [ ] Built-in themes: dark (current), light, high-contrast
+- [ ] /theme command to switch
+- [ ] Custom color definitions for all UI elements
+
+### P4.2 - Vim Mode
+- [ ] /vim toggle for vim-style input editing
+- [ ] h/j/k/l navigation, w/e/b word movement
+- [ ] Visual mode indicator (NORMAL/INSERT)
+
+### P4.3 - Export & Share
+- [ ] /export to markdown (improve current /save)
+- [ ] Include tool calls, diffs, timing in export
+- [ ] Clipboard copy of last response (Ctrl+Y or /copy)
+
+### P4.4 - Plugin System (Lightweight)
+- [ ] Load custom tools from .vsc/plugins/
+- [ ] JavaScript/Python plugin scripts
+- [ ] Plugin commands appear as slash commands
+
+### P4.5 - /loop Command
+- [ ] Run a prompt on recurring interval
+- [ ] Cron-based scheduling
+- [ ] Auto-expire after configurable duration
+
+### P4.6 - /batch Command
+- [ ] Parallel code changes across multiple files
+- [ ] Each change in isolated context
+- [ ] Merge results back
+
+### P4.7 - Image Clipboard Paste
+- [ ] Ctrl+V to paste screenshot from clipboard
+- [ ] Auto-encode and send to Gemini vision
+
+### P4.8 - Output Styles
+- [ ] Default, Explanatory (educational), Learning (interactive)
+- [ ] /output-style command to switch
+
+## Phase 5: IDE & Desktop (v1.0+)
+Long-term goals for ecosystem integration.
+
+### P5.1 - VS Code Extension
+- [ ] Basic extension with prompt box
+- [ ] File reference from editor
+- [ ] Inline diff display
+
+### P5.2 - Non-Interactive Print Mode
+- [ ] vsc -p "prompt" for CI/CD usage
+- [ ] JSON output format
+- [ ] Max turns / budget limits
+
+### P5.3 - Remote/Desktop Mode
+- [ ] Web interface for remote access
+- [ ] Session sharing URLs
+
+## Priority Matrix
+
+| Feature | User Value | Effort | Priority |
+|---------|-----------|--------|----------|
+| Session persistence | Very High | Medium | P1 |
+| @ file autocomplete | Very High | Medium | P1 |
+| Multi-line input | High | Low | P1 |
+| ! bash mode | High | Low | P1 |
+| /diff command | High | Medium | P1 |
+| Context visualization | Medium | Low | P1 |
+| Rewind/checkpoint | High | High | P2 |
+| Command palette | Medium | Medium | P2 |
+| Ctrl+R history search | Medium | Medium | P2 |
+| Subagents | High | High | P3 |
+| Permission modes | Medium | Medium | P3 |
+| Hooks system | Medium | High | P3 |
+| Theme system | Low | Medium | P4 |
+| Vim mode | Low | High | P4 |
+| Plugin system | Low | Very High | P4 |
 
 # Lessons Learned
 
