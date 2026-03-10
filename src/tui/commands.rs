@@ -26,6 +26,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("/version", "Show version information"),
     ("/retry", "Retry the last message"),
     ("/todo", "Show current task list"),
+    (
+        "/resume",
+        "Resume last session or list recent: /resume [id]",
+    ),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -54,6 +58,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  /save       Save conversation to file\n");
             help.push_str("  /todo       Show task list\n");
             help.push_str("  /retry      Retry last message\n");
+            help.push_str("  /resume     Resume previous session\n");
             help.push_str("  /config     Show/edit configuration\n");
             help.push_str("\n\u{1F50C} MCP Servers\n");
             help.push_str("  /mcp        List MCP servers\n");
@@ -285,6 +290,13 @@ pub fn handle_command(input: &str) -> CommandResponse {
         )),
         "/retry" | "/r" => CommandResponse::Retry,
         "/todo" | "/t" => CommandResponse::ShowTodo,
+        "/resume" => {
+            if args.is_empty() {
+                CommandResponse::Resume(None)
+            } else {
+                CommandResponse::Resume(Some(args.to_string()))
+            }
+        }
         _ => CommandResponse::Message(format!(
             "Unknown command: {}. Type /help for available commands.",
             cmd

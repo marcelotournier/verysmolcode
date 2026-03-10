@@ -837,6 +837,17 @@ impl AgentLoop {
         self.total_conversation_tokens = 0;
     }
 
+    /// Inject context into conversation without triggering the LLM.
+    /// Used by bash mode to inform the agent about shell commands run by the user.
+    pub fn inject_context(&mut self, context: &str) {
+        self.conversation.push(Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::Text {
+                text: format!("[System context] {}", context),
+            }],
+        });
+    }
+
     /// Undo the last turn's file changes
     pub fn undo(&mut self) -> Result<Vec<String>, String> {
         self.undo_history.undo()

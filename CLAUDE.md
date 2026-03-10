@@ -281,6 +281,14 @@
 - [x] Help text updated with multi-line and bash mode docs
 - [x] 477 unit tests
 
+## Completed (v0.11.1) — Session Persistence
+- [x] Session auto-save on exit (JSON files in ~/.config/verysmolcode/sessions/)
+- [x] /resume command: lists recent sessions or resumes specific one by ID
+- [x] Session data: messages, input history, token counts, cwd, timestamp
+- [x] Auto-prune: keeps only 10 most recent sessions to save disk
+- [x] Bash mode context injection: !commands inform the AI of what user ran
+- [x] 483 unit tests
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -292,13 +300,11 @@
 ## Phase 1: Core UX Improvements (v0.11.x) — HIGH PRIORITY
 These are table-stakes features that both OpenCode and Claude Code have.
 
-### P1.1 - Session Persistence & Resume
-- [ ] Save conversations to disk (SQLite or JSON files)
-- [ ] /resume command to list and resume past sessions
-- [ ] /new command to start fresh session (currently /clear)
-- [ ] Auto-save on exit, load on resume
-- [ ] Session naming (auto from first message + manual /rename)
-- [ ] Session cleanup after N days
+### P1.1 - Session Persistence & Resume ✅ (v0.11.1)
+- [x] Save conversations to disk (JSON files)
+- [x] /resume command to list and resume past sessions
+- [x] Auto-save on exit, load on resume
+- [x] Session cleanup (max 10 sessions, auto-prune)
 
 ### P1.2 - File Reference with @ Autocomplete
 - [ ] Type @ to trigger file path autocomplete dropdown

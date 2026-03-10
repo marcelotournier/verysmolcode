@@ -175,6 +175,11 @@ impl App {
                     let _ = done_tx.send(());
                     continue;
                 }
+                if let Some(ctx) = user_input.strip_prefix("/_context ") {
+                    agent.inject_context(ctx);
+                    let _ = done_tx.send(());
+                    continue;
+                }
 
                 let event_tx_clone = event_tx.clone();
                 let result = agent.process_message(&user_input, move |event| {
@@ -280,6 +285,9 @@ impl App {
                         let _ = tx.send("/_todo".to_string());
                     }
                     self.is_processing = true;
+                }
+                CommandResponse::Resume(id) => {
+                    self.handle_resume(id.as_deref());
                 }
                 CommandResponse::Compact => {
                     if let Some(tx) = &self.agent_tx {
@@ -642,6 +650,62 @@ impl App {
         Ok(path.display().to_string())
     }
 
+    fn handle_resume(&mut self, id: Option<&str>) {
+        use crate::tui::session::Session;
+
+        match id {
+            Some(session_id) => {
+                // Resume specific session
+                match Session::load_by_id(session_id) {
+                    Some(session) => self.restore_session(session),
+                    None => {
+                        self.messages.push(DisplayMessage::Error(format!(
+                            "Session '{}' not found.",
+                            session_id
+                        )));
+                    }
+                }
+            }
+            None => {
+                // No ID: show list of recent sessions, or resume latest if only one
+                let sessions = Session::list_recent(5);
+                if sessions.is_empty() {
+                    self.messages.push(DisplayMessage::Status(
+                        "No saved sessions found.".to_string(),
+                    ));
+                } else if sessions.len() == 1 {
+                    // Only one session, resume it
+                    if let Some(session) = Session::load_by_id(&sessions[0].0) {
+                        self.restore_session(session);
+                    }
+                } else {
+                    let mut msg = String::from("Recent sessions:\n\n");
+                    for (id, timestamp, cwd, msg_count) in &sessions {
+                        msg.push_str(&format!(
+                            "  {} | {} | {} | {} msgs\n",
+                            id, timestamp, cwd, msg_count
+                        ));
+                    }
+                    msg.push_str("\nUse /resume <id> to restore a session.");
+                    self.messages.push(DisplayMessage::Status(msg));
+                }
+            }
+        }
+    }
+
+    fn restore_session(&mut self, session: crate::tui::session::Session) {
+        self.messages = session.to_display_messages();
+        self.input_history = session.input_history;
+        self.total_input_tokens = session.total_input_tokens;
+        self.total_output_tokens = session.total_output_tokens;
+        self.total_thinking_tokens = session.total_thinking_tokens;
+        self.messages.push(DisplayMessage::Status(format!(
+            "Session {} restored ({} messages). Note: AI context was not restored — it starts fresh.",
+            session.id,
+            session.messages.len()
+        )));
+    }
+
     pub fn token_summary(&self) -> String {
         let total = self.total_input_tokens + self.total_output_tokens;
         format!(
@@ -684,6 +748,7 @@ pub enum CommandResponse {
     Retry,
     Compact,
     ShowTodo,
+    Resume(Option<String>), // Optional session ID
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -1225,6 +1290,8 @@ mod tests {
         let _retry = CommandResponse::Retry;
         let _compact = CommandResponse::Compact;
         let _todo = CommandResponse::ShowTodo;
+        let _resume = CommandResponse::Resume(None);
+        let _resume_id = CommandResponse::Resume(Some("20240101-120000".to_string()));
     }
 
     #[test]

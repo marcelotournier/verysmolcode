@@ -1,6 +1,7 @@
 pub mod app;
 pub mod commands;
 pub mod input;
+pub mod session;
 pub mod ui;
 
 use crossterm::{
@@ -29,6 +30,20 @@ pub fn run() -> Result<(), String> {
 
     // Main loop
     let result = run_app(&mut terminal, &mut app);
+
+    // Auto-save session on exit (only if there are messages)
+    if !app.messages.is_empty() {
+        let session = session::Session::new(
+            &app.messages,
+            &app.input_history,
+            app.total_input_tokens,
+            app.total_output_tokens,
+            app.total_thinking_tokens,
+        );
+        if let Err(e) = session.save() {
+            eprintln!("Warning: failed to save session: {}", e);
+        }
+    }
 
     // Restore terminal
     disable_raw_mode().ok();
