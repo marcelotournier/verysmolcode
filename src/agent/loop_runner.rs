@@ -624,31 +624,59 @@ impl AgentLoop {
         Ok(())
     }
 
-    /// Determine if a task is complex enough to warrant Pro model
+    /// Determine if a task is complex enough to warrant Pro model.
+    /// Pro budget is precious (25/day shared across 2 models), so we're selective.
     fn is_complex_task(&self, input: &str) -> bool {
-        let complex_keywords = [
+        let input_lower = input.to_lowercase();
+
+        // Strong signals: these almost always need Pro reasoning
+        let strong_keywords = [
             "refactor",
             "architect",
-            "design",
-            "complex",
+            "design pattern",
             "debug",
             "fix bug",
             "optimize",
-            "review",
-            "analyze",
-            "explain",
-            "why",
+            "performance",
+            "security",
+            "migrate",
+            "redesign",
+        ];
+        if strong_keywords.iter().any(|k| input_lower.contains(k)) {
+            return true;
+        }
+
+        // Medium signals: need Pro only when combined with complexity indicators
+        let medium_keywords = [
             "implement",
             "create",
             "build",
-            "full",
-            "entire",
-            "complete",
+            "analyze",
+            "explain",
+            "review",
+            "why",
         ];
-        let input_lower = input.to_lowercase();
-        let has_complex_keyword = complex_keywords.iter().any(|k| input_lower.contains(k));
-        let is_long = input.len() > 200;
-        has_complex_keyword || is_long
+        let complexity_indicators = [
+            "multiple",
+            "across",
+            "entire",
+            "full",
+            "complete",
+            "all",
+            "complex",
+            "system",
+            "integration",
+        ];
+        let has_medium = medium_keywords.iter().any(|k| input_lower.contains(k));
+        let has_complexity = complexity_indicators
+            .iter()
+            .any(|k| input_lower.contains(k));
+        if has_medium && has_complexity {
+            return true;
+        }
+
+        // Long messages (multi-paragraph instructions) suggest complex tasks
+        input.len() > 300 || input.lines().count() > 5
     }
 
     /// Compact the conversation to reduce token usage.
@@ -890,52 +918,87 @@ mod tests {
     use super::*;
 
     // -- is_complex_task tests --
-    // We can't call is_complex_task directly without an AgentLoop (needs API key),
-    // so we test the logic inline.
+    // Mirror the logic from is_complex_task since it requires AgentLoop (needs API key)
 
     fn check_complex(input: &str) -> bool {
-        let complex_keywords = [
+        let input_lower = input.to_lowercase();
+
+        let strong_keywords = [
             "refactor",
             "architect",
-            "design",
-            "complex",
+            "design pattern",
             "debug",
             "fix bug",
             "optimize",
-            "review",
-            "analyze",
-            "explain",
-            "why",
+            "performance",
+            "security",
+            "migrate",
+            "redesign",
+        ];
+        if strong_keywords.iter().any(|k| input_lower.contains(k)) {
+            return true;
+        }
+
+        let medium_keywords = [
             "implement",
             "create",
             "build",
-            "full",
-            "entire",
-            "complete",
+            "analyze",
+            "explain",
+            "review",
+            "why",
         ];
-        let input_lower = input.to_lowercase();
-        let has_complex_keyword = complex_keywords.iter().any(|k| input_lower.contains(k));
-        let is_long = input.len() > 200;
-        has_complex_keyword || is_long
+        let complexity_indicators = [
+            "multiple",
+            "across",
+            "entire",
+            "full",
+            "complete",
+            "all",
+            "complex",
+            "system",
+            "integration",
+        ];
+        let has_medium = medium_keywords.iter().any(|k| input_lower.contains(k));
+        let has_complexity = complexity_indicators
+            .iter()
+            .any(|k| input_lower.contains(k));
+        if has_medium && has_complexity {
+            return true;
+        }
+
+        input.len() > 300 || input.lines().count() > 5
     }
 
     #[test]
-    fn test_complex_task_keywords() {
+    fn test_complex_task_strong_keywords() {
         assert!(check_complex("refactor the auth module"));
         assert!(check_complex("debug this crash"));
-        assert!(check_complex("explain why this fails"));
-        assert!(check_complex("implement a new feature"));
-        assert!(check_complex("build a REST API"));
         assert!(check_complex("optimize the query"));
-        assert!(check_complex("review this PR"));
-        assert!(check_complex("analyze the codebase"));
+        assert!(check_complex("fix bug in auth"));
+        assert!(check_complex("migrate to new API"));
+        assert!(check_complex("redesign the layout"));
+    }
+
+    #[test]
+    fn test_complex_task_medium_with_complexity() {
+        // Medium keywords alone don't trigger Pro
+        assert!(!check_complex("create a file"));
+        assert!(!check_complex("build a test"));
+        assert!(!check_complex("explain this function"));
+
+        // But combined with complexity indicators, they do
+        assert!(check_complex("implement the entire auth system"));
+        assert!(check_complex("build a complete REST API"));
+        assert!(check_complex("create multiple endpoints across services"));
+        assert!(check_complex("review all the integration tests"));
     }
 
     #[test]
     fn test_complex_task_case_insensitive() {
         assert!(check_complex("REFACTOR everything"));
-        assert!(check_complex("Design a New System"));
         assert!(check_complex("FIX BUG in auth"));
+        assert!(check_complex("OPTIMIZE performance"));
     }
 
     #[test]
@@ -944,17 +1007,25 @@ mod tests {
         assert!(!check_complex("what is this file"));
         assert!(!check_complex("list files"));
         assert!(!check_complex("show me the code"));
+        assert!(!check_complex("create a file")); // simple create = Flash
+        assert!(!check_complex("build a test")); // simple build = Flash
     }
 
     #[test]
     fn test_complex_task_long_input() {
-        let long_input = "a".repeat(201);
+        let long_input = "a".repeat(301);
         assert!(check_complex(&long_input));
     }
 
     #[test]
-    fn test_complex_task_exactly_200_chars() {
-        let input = "a".repeat(200);
+    fn test_complex_task_multiline() {
+        let multiline = "line1\nline2\nline3\nline4\nline5\nline6";
+        assert!(check_complex(multiline));
+    }
+
+    #[test]
+    fn test_complex_task_short_not_complex() {
+        let input = "a".repeat(300);
         assert!(!check_complex(&input));
     }
 
