@@ -177,4 +177,46 @@ mod tests {
         let result = web_fetch(&json!({"url": "http://localhost:8080"}));
         assert!(result.get("error").is_some());
     }
+
+    #[test]
+    fn test_web_fetch_127_blocked() {
+        let result = web_fetch(&json!({"url": "http://127.0.0.1:9090/admin"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_web_fetch_0000_blocked() {
+        let result = web_fetch(&json!({"url": "http://0.0.0.0/secret"}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_strip_html_empty() {
+        assert_eq!(strip_html_tags(""), "");
+    }
+
+    #[test]
+    fn test_strip_html_plain_text() {
+        assert_eq!(strip_html_tags("just plain text"), "just plain text");
+    }
+
+    #[test]
+    fn test_strip_html_collapses_whitespace() {
+        let result = strip_html_tags("hello     world");
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_strip_html_nested_tags() {
+        let html = "<div><span><b>Bold</b></span></div>";
+        let result = strip_html_tags(html);
+        assert!(result.contains("Bold"));
+        assert!(!result.contains("<"));
+    }
+
+    #[test]
+    fn test_web_fetch_ftp_scheme_blocked() {
+        let result = web_fetch(&json!({"url": "ftp://files.example.com/data.txt"}));
+        assert!(result.get("error").is_some());
+    }
 }

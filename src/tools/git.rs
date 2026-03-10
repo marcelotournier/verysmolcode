@@ -407,4 +407,47 @@ mod tests {
         let result = git_push(&json!({}));
         assert!(result.get("success").is_some() || result.get("error").is_some());
     }
+
+    #[test]
+    fn test_run_shell_blocked_sudo_rm() {
+        let result = run_shell(&json!({"command": "sudo rm -rf /home"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_chmod_777() {
+        let result = run_shell(&json!({"command": "chmod -R 777 /"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_dev_sda() {
+        let result = run_shell(&json!({"command": "> /dev/sda"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_mkfs() {
+        let result = run_shell(&json!({"command": "mkfs.ext4 /dev/sdb1"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_rm_rf_home() {
+        let result = run_shell(&json!({"command": "rm -rf ~"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_git_pull() {
+        // Will likely error in test env but should not panic
+        let result = git_pull(&json!({}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_git_push_with_remote_and_branch() {
+        let result = git_push(&json!({"remote": "origin", "branch": "test-branch"}));
+        assert!(result.get("success").is_some() || result.get("error").is_some());
+    }
 }

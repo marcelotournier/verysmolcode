@@ -305,4 +305,88 @@ mod tests {
         let result = todo_update(&json!({"action": "add"}), &mut todo);
         assert!(result.get("error").is_some());
     }
+
+    #[test]
+    fn test_todo_update_tool_start() {
+        let mut todo = TodoList::new();
+        let id = todo.add("Task");
+        let result = todo_update(&json!({"action": "start", "id": id}), &mut todo);
+        assert!(result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false));
+        assert_eq!(todo.items[0].status, TodoStatus::InProgress);
+    }
+
+    #[test]
+    fn test_todo_update_tool_start_missing_id() {
+        let mut todo = TodoList::new();
+        let result = todo_update(&json!({"action": "start"}), &mut todo);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_todo_update_tool_done_missing_id() {
+        let mut todo = TodoList::new();
+        let result = todo_update(&json!({"action": "done"}), &mut todo);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_todo_update_tool_remove() {
+        let mut todo = TodoList::new();
+        let id = todo.add("Task to remove");
+        let result = todo_update(&json!({"action": "remove", "id": id}), &mut todo);
+        assert!(result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false));
+        assert!(todo.is_empty());
+    }
+
+    #[test]
+    fn test_todo_update_tool_remove_missing_id() {
+        let mut todo = TodoList::new();
+        let result = todo_update(&json!({"action": "remove"}), &mut todo);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_todo_update_tool_remove_nonexistent() {
+        let mut todo = TodoList::new();
+        let result = todo_update(&json!({"action": "remove", "id": 999}), &mut todo);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_todo_update_tool_list() {
+        let mut todo = TodoList::new();
+        todo.add("Task A");
+        todo.add("Task B");
+        let result = todo_update(&json!({"action": "list"}), &mut todo);
+        let tasks = result.get("tasks").and_then(|v| v.as_str()).unwrap();
+        assert!(tasks.contains("Task A"));
+        assert!(tasks.contains("Task B"));
+    }
+
+    #[test]
+    fn test_todo_display_empty() {
+        let todo = TodoList::new();
+        let display = todo.to_display();
+        assert!(display.contains("No tasks"));
+    }
+
+    #[test]
+    fn test_todo_update_tool_start_nonexistent() {
+        let mut todo = TodoList::new();
+        let result = todo_update(&json!({"action": "start", "id": 999}), &mut todo);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_todo_update_tool_done_nonexistent() {
+        let mut todo = TodoList::new();
+        let result = todo_update(&json!({"action": "done", "id": 999}), &mut todo);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_todo_default() {
+        let todo = TodoList::default();
+        assert!(todo.is_empty());
+    }
 }

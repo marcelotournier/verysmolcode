@@ -201,3 +201,156 @@ fn collect_all_files(dir: &Path, files: &mut Vec<PathBuf>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn make_temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("vsc_test_grep_{}", name));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_is_likely_binary_by_extension() {
+        assert!(is_likely_binary(Path::new("image.png")));
+        assert!(is_likely_binary(Path::new("archive.zip")));
+        assert!(is_likely_binary(Path::new("lib.so")));
+        assert!(is_likely_binary(Path::new("code.pyc")));
+        assert!(is_likely_binary(Path::new("app.exe")));
+        assert!(is_likely_binary(Path::new("module.wasm")));
+    }
+
+    #[test]
+    fn test_is_likely_binary_text_extension() {
+        assert!(!is_likely_binary(Path::new("code.rs")));
+        assert!(!is_likely_binary(Path::new("readme.md")));
+        assert!(!is_likely_binary(Path::new("config.toml")));
+    }
+
+    #[test]
+    fn test_is_likely_binary_null_bytes() {
+        let dir = make_temp_dir("null_bytes");
+        let path = dir.join("test.dat");
+        let mut f = fs::File::create(&path).unwrap();
+        f.write_all(&[0x48, 0x65, 0x6c, 0x00, 0x6f]).unwrap();
+        assert!(is_likely_binary(&path));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_is_likely_binary_clean_text_file() {
+        let dir = make_temp_dir("clean_text");
+        let path = dir.join("clean.txt");
+        fs::write(&path, "Hello, this is text!").unwrap();
+        assert!(!is_likely_binary(&path));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_is_likely_binary_nonexistent_file() {
+        assert!(!is_likely_binary(Path::new("/nonexistent/file.xyz")));
+    }
+
+    #[test]
+    fn test_grep_search_missing_pattern() {
+        let result = grep_search(&json!({}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_grep_search_nonexistent_path() {
+        let result = grep_search(&json!({"pattern": "hello", "path": "/nonexistent/dir"}));
+        let matches = result.get("matches").and_then(|v| v.as_array());
+        assert!(matches.is_some());
+        assert_eq!(matches.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_grep_search_with_include_filter() {
+        let dir = make_temp_dir("include_filter");
+        fs::write(dir.join("code.rs"), "fn hello() {}").unwrap();
+        fs::write(dir.join("data.txt"), "hello world").unwrap();
+
+        let result = grep_search(&json!({
+            "pattern": "hello",
+            "path": dir.to_str().unwrap(),
+            "include": "*.rs"
+        }));
+        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0]["file"].as_str().unwrap().ends_with("code.rs"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_grep_search_max_results() {
+        let dir = make_temp_dir("max_results");
+        let mut content = String::new();
+        for i in 0..20 {
+            content.push_str(&format!("hello line {}\n", i));
+        }
+        fs::write(dir.join("many.txt"), &content).unwrap();
+
+        let result = grep_search(&json!({
+            "pattern": "hello",
+            "path": dir.to_str().unwrap(),
+            "max_results": 3
+        }));
+        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
+        assert!(matches.len() <= 3);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_find_files_missing_pattern() {
+        let result = find_files(&json!({}));
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_find_files_no_match() {
+        let dir = make_temp_dir("no_match");
+        fs::write(dir.join("code.rs"), "fn main() {}").unwrap();
+
+        let result = find_files(&json!({
+            "pattern": "*.py",
+            "path": dir.to_str().unwrap()
+        }));
+        let files = result.get("files").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(files.len(), 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_collect_files_skips_hidden_dirs() {
+        let dir = make_temp_dir("hidden_dirs");
+        let hidden = dir.join(".hidden");
+        fs::create_dir(&hidden).unwrap();
+        fs::write(hidden.join("secret.rs"), "secret").unwrap();
+        fs::write(dir.join("visible.rs"), "visible").unwrap();
+
+        let mut files = Vec::new();
+        collect_files(&dir, None, &mut files);
+        assert_eq!(files.len(), 1);
+        assert!(files[0].to_string_lossy().contains("visible.rs"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_collect_files_skips_node_modules() {
+        let dir = make_temp_dir("node_modules_skip");
+        let nm = dir.join("node_modules");
+        fs::create_dir(&nm).unwrap();
+        fs::write(nm.join("pkg.js"), "module").unwrap();
+        fs::write(dir.join("app.js"), "app").unwrap();
+
+        let mut files = Vec::new();
+        collect_files(&dir, None, &mut files);
+        assert_eq!(files.len(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

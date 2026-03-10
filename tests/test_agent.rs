@@ -318,6 +318,54 @@ fn test_dangerous_no_path_arg() {
     ));
 }
 
+#[test]
+fn test_dangerous_write_to_usr() {
+    assert!(is_dangerous_tool_call(
+        "write_file",
+        &json!({"path": "/usr/local/bin/evil", "content": "bad"})
+    ));
+}
+
+#[test]
+fn test_dangerous_write_to_bin() {
+    assert!(is_dangerous_tool_call(
+        "write_file",
+        &json!({"path": "/bin/sh", "content": "bad"})
+    ));
+}
+
+#[test]
+fn test_dangerous_write_to_sbin() {
+    assert!(is_dangerous_tool_call(
+        "write_file",
+        &json!({"path": "/sbin/init", "content": "bad"})
+    ));
+}
+
+#[test]
+fn test_dangerous_write_to_lib() {
+    assert!(is_dangerous_tool_call(
+        "write_file",
+        &json!({"path": "/lib/x86_64-linux-gnu/libc.so", "content": "bad"})
+    ));
+}
+
+#[test]
+fn test_dangerous_write_to_proc() {
+    assert!(is_dangerous_tool_call(
+        "write_file",
+        &json!({"path": "/proc/self/status", "content": "bad"})
+    ));
+}
+
+#[test]
+fn test_dangerous_write_to_sys() {
+    assert!(is_dangerous_tool_call(
+        "write_file",
+        &json!({"path": "/sys/class/gpio/export", "content": "bad"})
+    ));
+}
+
 // -- ModelOverride tests --
 
 #[test]

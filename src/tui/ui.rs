@@ -340,3 +340,86 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     }
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wrap_text_short_line() {
+        let result = wrap_text("hello world", 80);
+        assert_eq!(result, vec!["hello world"]);
+    }
+
+    #[test]
+    fn test_wrap_text_exact_width() {
+        let result = wrap_text("hello", 5);
+        // width.max(20) clamps to 20, so "hello" (5 chars) fits
+        assert_eq!(result, vec!["hello"]);
+    }
+
+    #[test]
+    fn test_wrap_text_wraps_long_line() {
+        let result = wrap_text("the quick brown fox jumps over the lazy dog", 20);
+        assert!(result.len() > 1);
+        for line in &result {
+            assert!(line.len() <= 20, "Line too long: '{}'", line);
+        }
+    }
+
+    #[test]
+    fn test_wrap_text_preserves_newlines() {
+        let result = wrap_text("line one\nline two\nline three", 80);
+        assert_eq!(result, vec!["line one", "line two", "line three"]);
+    }
+
+    #[test]
+    fn test_wrap_text_empty_input() {
+        let result = wrap_text("", 80);
+        assert_eq!(result, vec![""]);
+    }
+
+    #[test]
+    fn test_wrap_text_long_word_no_spaces() {
+        // A single long word with no break points — should still appear (not be lost)
+        let long = "a".repeat(50);
+        let result = wrap_text(&long, 30);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], long);
+    }
+
+    #[test]
+    fn test_wrap_text_min_width_clamped() {
+        // width=5 gets clamped to 20
+        let result = wrap_text("short text here", 5);
+        assert_eq!(result, vec!["short text here"]);
+    }
+
+    #[test]
+    fn test_wrap_text_multiple_spaces_short() {
+        // Short line (len <= width) is preserved as-is, including spaces
+        let result = wrap_text("hello    world", 80);
+        assert_eq!(result, vec!["hello    world"]);
+    }
+
+    #[test]
+    fn test_wrap_text_multiple_spaces_wrapped() {
+        // When wrapping occurs, split_whitespace collapses spaces
+        let result = wrap_text(
+            "hello    world    this    is    long    enough    to    wrap",
+            20,
+        );
+        assert!(result.len() > 1);
+        // No double spaces in wrapped output
+        for line in &result {
+            assert!(!line.contains("  "), "Double space in: '{}'", line);
+        }
+    }
+
+    #[test]
+    fn test_wrap_text_multiline_with_wrapping() {
+        let result = wrap_text("short\nthis is a longer line that should wrap around", 25);
+        assert_eq!(result[0], "short");
+        assert!(result.len() >= 3);
+    }
+}
