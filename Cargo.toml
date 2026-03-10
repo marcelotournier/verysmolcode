@@ -1,6 +1,6 @@
 [package]
 name = "verysmolcode"
-version = "0.10.2"
+version = "0.10.3"
 edition = "2021"
 description = "A lightweight TUI coding assistant using Gemini API free tier"
 license = "MIT"

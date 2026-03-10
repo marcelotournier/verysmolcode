@@ -645,11 +645,17 @@ fn test_agent_event_tool_result() {
     let event = AgentEvent::ToolResult {
         name: "write_file".to_string(),
         result: json!({"path": "/tmp/test.txt", "bytes_written": 42}),
+        duration_ms: 150,
     };
     match event {
-        AgentEvent::ToolResult { name, result } => {
+        AgentEvent::ToolResult {
+            name,
+            result,
+            duration_ms,
+        } => {
             assert_eq!(name, "write_file");
             assert_eq!(result.get("bytes_written").unwrap().as_u64().unwrap(), 42);
+            assert_eq!(duration_ms, 150);
         }
         _ => panic!("Expected ToolResult event"),
     }

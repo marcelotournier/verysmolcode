@@ -451,6 +451,7 @@ impl AgentLoop {
                     on_event(AgentEvent::ToolResult {
                         name: call.name.clone(),
                         result: result.clone(),
+                        duration_ms: 0,
                     });
                     function_responses.push(Part::function_response(&call.name, result));
                     continue;
@@ -464,6 +465,9 @@ impl AgentLoop {
                     }
                 }
 
+                // Execute tool with timing
+                let start = std::time::Instant::now();
+
                 // Handle todo_update specially (needs mutable access to self.todo)
                 let result = if call.name == "todo_update" {
                     crate::tools::todo::todo_update(&call.args, &mut self.todo)
@@ -472,6 +476,8 @@ impl AgentLoop {
                     self.try_execute_mcp(&call.name, &call.args)
                         .unwrap_or_else(|| ToolRegistry::execute(&call.name, &call.args))
                 };
+
+                let duration_ms = start.elapsed().as_millis() as u64;
 
                 // Track if files were modified (for critic decision)
                 if matches!(
@@ -484,6 +490,7 @@ impl AgentLoop {
                 on_event(AgentEvent::ToolResult {
                     name: call.name.clone(),
                     result: result.clone(),
+                    duration_ms,
                 });
 
                 // Truncate large tool results before adding to conversation history
@@ -836,6 +843,7 @@ pub enum AgentEvent {
     ToolResult {
         name: String,
         result: serde_json::Value,
+        duration_ms: u64,
     },
     ModelSwitch(String),
     TokenUpdate {

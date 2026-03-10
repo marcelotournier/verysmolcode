@@ -227,6 +227,12 @@
 - [x] 2 new HTML tests: multibyte emoji content, case-insensitive SCRIPT tags
 - [x] 462 unit tests
 
+## Completed (v0.10.3)
+- [x] Tool execution timing: each tool call is timed with std::time::Instant
+- [x] duration_ms added to AgentEvent::ToolResult (0 for blocked calls)
+- [x] TUI shows timing in tool result summary (e.g. "read_file: ok (12ms)")
+- [x] CLI mode also shows timing in tool result line
+
 # Lessons Learned
 
 ## TLS Crate Selection

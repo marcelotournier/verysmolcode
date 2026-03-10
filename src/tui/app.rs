@@ -392,8 +392,20 @@ impl App {
                         .push(DisplayMessage::ToolCall(format!("{}({})", name, args_str)));
                     needs_scroll = true;
                 }
-                AgentEvent::ToolResult { name, result } => {
-                    let summary = summarize_tool_result(&name, &result);
+                AgentEvent::ToolResult {
+                    name,
+                    result,
+                    duration_ms,
+                } => {
+                    let summary = if duration_ms > 0 {
+                        format!(
+                            "{} ({}ms)",
+                            summarize_tool_result(&name, &result),
+                            duration_ms
+                        )
+                    } else {
+                        summarize_tool_result(&name, &result)
+                    };
                     self.messages.push(DisplayMessage::ToolResult(summary));
                     needs_scroll = true;
                 }

@@ -177,8 +177,17 @@ fn run_prompt_mode(prompt: &str) {
                     colors.cyan(&format!("\u{1F529} {}({})", name, args_brief))
                 );
             }
-            AgentEvent::ToolResult { name, .. } => {
-                eprintln!("{}", colors.green(&format!("\u{2705} {}", name)));
+            AgentEvent::ToolResult {
+                name, duration_ms, ..
+            } => {
+                if duration_ms > 0 {
+                    eprintln!(
+                        "{}",
+                        colors.green(&format!("\u{2705} {} ({}ms)", name, duration_ms))
+                    );
+                } else {
+                    eprintln!("{}", colors.green(&format!("\u{2705} {}", name)));
+                }
             }
             AgentEvent::Status(s) => {
                 if !s.starts_with("RATE:") && !s.starts_with("WARN:") {
