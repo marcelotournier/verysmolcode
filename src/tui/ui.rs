@@ -701,6 +701,40 @@ fn render_markdown<'a>(text: &str, width: usize) -> Vec<Line<'a>> {
             continue;
         }
 
+        // Horizontal rule
+        if trimmed == "---" || trimmed == "***" || trimmed == "___" {
+            let rule: String = "\u{2500}".repeat(width.min(60));
+            result.push(Line::from(Span::styled(
+                rule,
+                Style::default().fg(Color::Rgb(60, 70, 90)),
+            )));
+            continue;
+        }
+
+        // Numbered lists (e.g., "1. item", "2. item")
+        if let Some(rest) = trimmed
+            .split_once(". ")
+            .filter(|(num, _)| num.len() <= 3 && num.chars().all(|c| c.is_ascii_digit()))
+        {
+            let indent = raw_line.len() - trimmed.len();
+            let list_indent = " ".repeat(indent);
+            let wrapped = wrap_text(rest.1, width.saturating_sub(indent + 4));
+            for (i, line) in wrapped.iter().enumerate() {
+                if i == 0 {
+                    result.push(Line::from(Span::styled(
+                        format!("{}{}. {}", list_indent, rest.0, line),
+                        Style::default().fg(ASSISTANT_COLOR),
+                    )));
+                } else {
+                    result.push(Line::from(Span::styled(
+                        format!("{}   {}", list_indent, line),
+                        Style::default().fg(ASSISTANT_COLOR),
+                    )));
+                }
+            }
+            continue;
+        }
+
         // Regular text with inline code and bold
         let wrapped = wrap_text(raw_line, width);
         for line in wrapped {
