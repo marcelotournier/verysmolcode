@@ -25,6 +25,7 @@ pub fn web_fetch(args: &Value) -> Value {
                 env!("CARGO_PKG_VERSION")
             ),
         )
+        .timeout(std::time::Duration::from_secs(60))
         .call()
     {
         Ok(resp) => {
