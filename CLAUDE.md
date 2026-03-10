@@ -1,4 +1,5 @@
 # VerySmolCode
+- Repository: https://github.com/marcelotournier/verysmolcode
 - Create VerySmolCode, a rust-based TUI that mimics Claude Code and works with Gemini API free tier. GEMINI_API_KEY is in the env variable
 - TUI must be lightweight enough to run in a memory constrained device such as a raspberrypi 3 (1GB RAM)
 - Make sure this respects the free tier API limits for models. Smarter models get fewer requests: Pro gives 5/min and 100/day, Flash 10/min and 250/day, Flash-Lite 15/min and 1,000/day. Look for the most up to date models in google documentation
