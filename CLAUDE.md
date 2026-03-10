@@ -91,8 +91,11 @@
 - [x] /save command - exports conversation to timestamped .md file
 - [x] 192 unit tests
 
-## Planned
-- [ ] macOS and Windows wheel builds in CI
+## Completed (v0.8.1)
+- [x] Command timeout (60s default) for shell and git commands — prevents hung processes on RPi3
+- [x] MCP server startup error reporting — no longer silently swallowed
+- [x] macOS and Windows wheel builds in CI
+- [x] 213 unit tests
 
 # Lessons Learned
 

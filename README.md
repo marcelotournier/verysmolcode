@@ -17,6 +17,8 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 
 ### With pip (Python)
 
+Pre-built wheels available for Linux (x86_64, aarch64, armv7), macOS (Intel + Apple Silicon), and Windows (x86_64):
+
 ```bash
 pip install verysmolcode
 ```

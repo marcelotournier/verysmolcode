@@ -99,6 +99,18 @@ jobs:
             target: armv7
             manylinux: 2_28
             artifact: wheels-linux-armv7
+          # macOS x86_64 (Intel Macs)
+          - os: macos-13
+            target: x86_64
+            artifact: wheels-macos-x86_64
+          # macOS aarch64 (Apple Silicon)
+          - os: macos-14
+            target: aarch64
+            artifact: wheels-macos-aarch64
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64
+            artifact: wheels-windows-x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -109,7 +121,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --features python -i python3.13
-          manylinux: ${{ matrix.manylinux }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
