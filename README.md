@@ -6,7 +6,9 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 
 - **Smart Model Routing**: Automatically selects between Gemini Pro, Flash, and Flash-Lite based on task complexity, with graceful fallback when rate limits are hit
 - **Planning Mode**: `/plan` for read-only analysis using Pro models before making changes
-- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch
+- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading
+- **Web Search**: Gemini's native Google Search grounding for finding docs and examples
+- **MCP Support**: Connect to MCP servers (context7, playwright, etc.) via `/mcp-add`
 - **Token-Aware**: Conversation compaction, thinking budget control, and rate limit tracking
 - **Safe by Default**: Blocks destructive operations, validates paths, and prevents dangerous commands
 - **Lightweight**: ~5MB binary, minimal memory footprint, runs on Raspberry Pi 3
@@ -26,6 +28,12 @@ cargo install --path .
 ```
 
 ### With pip (Python)
+
+```bash
+pip install verysmolcode
+```
+
+### From Source (Python)
 
 ```bash
 pip install maturin
@@ -54,6 +62,10 @@ vsc
 | `/config`  | Show current configuration                        |
 | `/status`  | Show rate limits and token usage                  |
 | `/compact` | Manually compact conversation to save tokens      |
+| `/mcp`     | List configured MCP servers                       |
+| `/mcp-add` | Add MCP server: `/mcp-add name command [args]`   |
+| `/mcp-rm`  | Remove MCP server: `/mcp-rm name`                |
+| `/version` | Show version information                          |
 | `/clear`   | Clear conversation and screen                     |
 | `/quit`    | Exit VerySmolCode                                 |
 
@@ -111,7 +123,11 @@ src/
     grep.rs         - Search and find files
     git.rs          - Git operations and shell commands
     web.rs          - Web page fetching
-    registry.rs     - Tool registration and dispatch
+    registry.rs     - Tool registration and dispatch (18 tools)
+  mcp/
+    client.rs       - MCP client (stdio JSON-RPC 2.0)
+    config.rs       - MCP server configuration
+    types.rs        - MCP protocol types
   tui/
     app.rs          - Application state and event handling
     ui.rs           - Terminal UI rendering
