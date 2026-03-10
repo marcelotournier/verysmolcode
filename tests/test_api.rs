@@ -255,7 +255,8 @@ fn test_build_request_with_thinking() {
 
     let config = request.generation_config.unwrap();
     assert!(config.thinking_config.is_some());
-    assert_eq!(config.thinking_config.unwrap().thinking_budget, 2048);
+    // Flash tier gets 1024 thinking budget (scaled by tier to save tokens)
+    assert_eq!(config.thinking_config.unwrap().thinking_budget, 1024);
 }
 
 #[test]

@@ -24,6 +24,56 @@ pub struct AgentLoop {
     total_conversation_tokens: u32,
     planning_mode: bool,
     mcp_clients: Vec<McpClient>,
+    files_modified: bool, // Track if any write/edit tools were used this turn
+}
+
+/// Max characters for a single tool result before truncation.
+/// Gemini's context is large but each token costs requests/day budget.
+const MAX_TOOL_RESULT_CHARS: usize = 8000;
+
+/// Truncate a tool result JSON to save tokens
+fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
+    let s = result.to_string();
+    if s.len() <= MAX_TOOL_RESULT_CHARS {
+        return result.clone();
+    }
+    // For objects with a "content" or "matches" field, truncate that field
+    if let Some(obj) = result.as_object() {
+        let mut truncated = obj.clone();
+        for key in &["content", "matches", "output", "stdout"] {
+            if let Some(val) = truncated.get(*key) {
+                let val_str = val.to_string();
+                if val_str.len() > MAX_TOOL_RESULT_CHARS / 2 {
+                    let cut = &val_str[..MAX_TOOL_RESULT_CHARS / 2];
+                    truncated.insert(
+                        key.to_string(),
+                        serde_json::json!(format!(
+                            "{}...[truncated, {} chars total]",
+                            cut,
+                            val_str.len()
+                        )),
+                    );
+                }
+            }
+        }
+        return serde_json::Value::Object(truncated);
+    }
+    // Fallback: truncate the whole string
+    serde_json::json!(format!(
+        "{}...[truncated, {} chars total]",
+        &s[..MAX_TOOL_RESULT_CHARS],
+        s.len()
+    ))
+}
+
+/// Strip thinking/thought parts from conversation history to save tokens on resend.
+/// Thinking tokens are useful for the model's reasoning but shouldn't be sent back.
+fn strip_thinking_from_history(conversation: &mut [Content]) {
+    for content in conversation.iter_mut() {
+        content
+            .parts
+            .retain(|part| !matches!(part, Part::Thought { .. }));
+    }
 }
 
 const PLANNING_SYSTEM_PROMPT: &str = r#"You are in PLANNING MODE. Your job is to analyze the task and create a detailed, step-by-step implementation plan.
@@ -74,6 +124,7 @@ impl AgentLoop {
             total_conversation_tokens: 0,
             planning_mode: false,
             mcp_clients,
+            files_modified: false,
         })
     }
 
@@ -164,12 +215,15 @@ impl AgentLoop {
 
         // In planning mode, always prefer Pro models
         let prefer_smart = self.planning_mode || self.is_complex_task(user_input);
+        self.files_modified = false;
 
         // Main agent loop - keeps going until no more tool calls
         // Planning mode gets fewer iterations (just reading + planning)
         let max_iterations = if self.planning_mode { 8 } else { 15 };
         let mut had_tool_calls = false;
         for iteration in 0..max_iterations {
+            // Strip thinking tokens from history before resending to save tokens
+            strip_thinking_from_history(&mut self.conversation);
             // Check if we need to compact conversation
             if self.total_conversation_tokens > self.config.auto_compact_threshold {
                 on_event(AgentEvent::Status(
@@ -178,11 +232,13 @@ impl AgentLoop {
                 self.compact_conversation();
             }
 
-            // Pick model
+            // Pick model: only use Pro for first iteration, Flash for tool-call follow-ups
+            // This saves Pro budget (25/day) for initial reasoning
+            let use_smart = prefer_smart && iteration == 0;
             let model = self
                 .client
                 .router
-                .pick_model(prefer_smart && iteration == 0)
+                .pick_model(use_smart)
                 .ok_or_else(|| "All models exhausted for today".to_string())?;
 
             on_event(AgentEvent::ModelSwitch(model.display_name().to_string()));
@@ -289,10 +345,22 @@ impl AgentLoop {
                 let result = self
                     .try_execute_mcp(&call.name, &call.args)
                     .unwrap_or_else(|| ToolRegistry::execute(&call.name, &call.args));
+
+                // Track if files were modified (for critic decision)
+                if matches!(
+                    call.name.as_str(),
+                    "write_file" | "edit_file" | "run_command"
+                ) {
+                    self.files_modified = true;
+                }
+
                 on_event(AgentEvent::ToolResult {
                     name: call.name.clone(),
                     result: result.clone(),
                 });
+
+                // Truncate large tool results before adding to conversation history
+                let result = truncate_tool_result(&result);
 
                 // For read_image, include the InlineData part so Gemini can see it
                 if call.name == "read_image" {
@@ -326,8 +394,9 @@ impl AgentLoop {
             });
         }
 
-        // Run critic check if we used tools (not in planning mode)
-        if !self.planning_mode && had_tool_calls {
+        // Run critic check only if files were actually modified (saves API calls)
+        // Skip critic for read-only operations, planning mode, or when no budget
+        if !self.planning_mode && had_tool_calls && self.files_modified {
             self.run_critic(user_input, &mut on_event)?;
         }
 

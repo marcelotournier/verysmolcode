@@ -126,8 +126,14 @@ pub fn build_request(
     max_tokens: u32,
 ) -> GenerateRequest {
     let thinking_config = if model.supports_thinking() {
+        // Scale thinking budget by model tier to conserve tokens
+        let budget = match model.tier() {
+            crate::api::models::ModelTier::Pro => 2048,
+            crate::api::models::ModelTier::Flash => 1024,
+            crate::api::models::ModelTier::FlashLite => 512,
+        };
         Some(ThinkingConfig {
-            thinking_budget: 2048,
+            thinking_budget: budget,
         })
     } else {
         None
