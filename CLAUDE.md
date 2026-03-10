@@ -249,6 +249,13 @@
 - [x] 4 new tests: edit hints (whitespace, case, fallback), set_command_timeout
 - [x] 441 unit tests
 
+## Completed (v0.10.5)
+- [x] Tool declaration descriptions trimmed (~30% shorter, saves ~100 tokens/request)
+- [x] Thinking retention increased from 3 to 5 messages (better multi-turn reasoning)
+- [x] Actionable error hints: rate limit exhaustion, network failures, model quotas
+- [x] Help text: added Ctrl+A/E/U/K/W keybindings (was missing)
+- [x] 441 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection

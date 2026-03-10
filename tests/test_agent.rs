@@ -113,7 +113,7 @@ fn test_strip_thinking_empty_conversation() {
 
 #[test]
 fn test_strip_thinking_strips_old_keeps_recent() {
-    // 5 messages: old ones get stripped, last 3 keep thinking
+    // 7 messages: old ones get stripped, last 5 keep thinking
     let mut conversation = vec![
         Content {
             role: Some("model".to_string()),
@@ -144,9 +144,23 @@ fn test_strip_thinking_strips_old_keeps_recent() {
             parts: vec![
                 Part::Thought {
                     thought: true,
-                    text: "recent thinking".to_string(),
+                    text: "mid thinking".to_string(),
                 },
                 Part::text("answer 3"),
+            ],
+        },
+        Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text("question 4")],
+        },
+        Content {
+            role: Some("model".to_string()),
+            parts: vec![
+                Part::Thought {
+                    thought: true,
+                    text: "recent thinking".to_string(),
+                },
+                Part::text("answer 4"),
             ],
         },
         Content {
@@ -160,15 +174,17 @@ fn test_strip_thinking_strips_old_keeps_recent() {
     // First 2 messages (index 0, 1) are old — thinking stripped
     assert_eq!(conversation[0].parts.len(), 1); // thought removed
     assert_eq!(conversation[1].parts.len(), 1); // thought removed
-                                                // Last 3 messages (index 2, 3, 4) — thinking preserved
+                                                // Last 5 messages (index 2-6) — thinking preserved
     assert_eq!(conversation[2].parts.len(), 1); // user, no thought
     assert_eq!(conversation[3].parts.len(), 2); // model, thought kept
     assert_eq!(conversation[4].parts.len(), 1); // user, no thought
+    assert_eq!(conversation[5].parts.len(), 2); // model, thought kept
+    assert_eq!(conversation[6].parts.len(), 1); // user, no thought
 }
 
 #[test]
 fn test_strip_thinking_three_messages_all_kept() {
-    // Exactly 3 messages — all within "last 3", so nothing stripped
+    // Exactly 3 messages — all within "last 5", so nothing stripped
     let mut conversation = vec![
         Content {
             role: Some("user".to_string()),

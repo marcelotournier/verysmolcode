@@ -91,9 +91,9 @@ pub fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
 }
 
 /// Strip thinking/thought parts from older conversation history to save tokens.
-/// Keeps thinking from the last 3 messages so multi-turn reasoning context isn't lost.
+/// Keeps thinking from the last 5 messages so multi-turn reasoning context isn't lost.
 pub fn strip_thinking_from_history(conversation: &mut [Content]) {
-    let keep_from = conversation.len().saturating_sub(3);
+    let keep_from = conversation.len().saturating_sub(5);
     for (i, content) in conversation.iter_mut().enumerate() {
         if i < keep_from {
             content
@@ -298,11 +298,10 @@ impl AgentLoop {
             // Pick model: only use Pro for first iteration, Flash for tool-call follow-ups
             // This saves Pro budget (25/day) for initial reasoning
             let use_smart = prefer_smart && iteration == 0;
-            let model = self
-                .client
-                .router
-                .pick_model(use_smart)
-                .ok_or_else(|| "All models exhausted for today".to_string())?;
+            let model = self.client.router.pick_model(use_smart).ok_or_else(|| {
+                "All models exhausted for today. Try again tomorrow, or check /status for limits"
+                    .to_string()
+            })?;
 
             on_event(AgentEvent::ModelSwitch(model.display_name().to_string()));
 
@@ -389,7 +388,10 @@ impl AgentLoop {
                                 current_model = fb;
                                 retried = false;
                             } else {
-                                return Err(e);
+                                return Err(format!(
+                                    "{}. All models exhausted — try again in a few minutes, or use /fast to conserve Pro budget",
+                                    e
+                                ));
                             }
                         }
                         Err(e) if is_transient_error(&e) => {
@@ -402,7 +404,10 @@ impl AgentLoop {
                                 retried = true;
                                 continue;
                             }
-                            return Err(e);
+                            return Err(format!(
+                                "{}. Check your network connection and try again",
+                                e
+                            ));
                         }
                         Err(e) => return Err(e),
                     }

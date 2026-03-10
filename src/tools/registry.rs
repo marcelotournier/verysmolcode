@@ -48,7 +48,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             },
             FunctionDecl {
                 name: "write_file".to_string(),
-                description: "Write content to a file, creating it if it doesn't exist".to_string(),
+                description: "Write content to a file (creates if needed)".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -66,7 +66,9 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             },
             FunctionDecl {
                 name: "edit_file".to_string(),
-                description: "Edit a file by replacing old_string with new_string. The old_string must be unique in the file.".to_string(),
+                description:
+                    "Replace old_string with new_string in a file (old_string must be unique)"
+                        .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -76,7 +78,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                         },
                         "old_string": {
                             "type": "string",
-                            "description": "Exact string to find and replace (must be unique)"
+                            "description": "Exact string to find (must be unique)"
                         },
                         "new_string": {
                             "type": "string",
@@ -94,7 +96,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "Directory path (default: current directory)"
+                            "description": "Directory path"
                         }
                     }
                 }),
@@ -107,15 +109,15 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "pattern": {
                             "type": "string",
-                            "description": "Text pattern to search for (case-insensitive)"
+                            "description": "Text pattern (case-insensitive)"
                         },
                         "path": {
                             "type": "string",
-                            "description": "Directory to search in (default: current directory)"
+                            "description": "Directory to search in"
                         },
                         "include": {
                             "type": "string",
-                            "description": "File extension filter, e.g. '*.rs' or '*.py'"
+                            "description": "File extension filter, e.g. '*.rs'"
                         }
                     },
                     "required": ["pattern"]
@@ -129,7 +131,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "pattern": {
                             "type": "string",
-                            "description": "Filename pattern to match, e.g. '*.rs' or 'Cargo.toml'"
+                            "description": "Filename pattern, e.g. '*.rs'"
                         },
                         "path": {
                             "type": "string",
@@ -155,7 +157,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "staged": {
                             "type": "boolean",
-                            "description": "Show staged changes (default: false)"
+                            "description": "Show staged changes"
                         }
                     }
                 }),
@@ -168,7 +170,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "count": {
                             "type": "integer",
-                            "description": "Number of commits to show (default: 10)"
+                            "description": "Number of commits (default: 10)"
                         }
                     }
                 }),
@@ -185,7 +187,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                         },
                         "add_all": {
                             "type": "boolean",
-                            "description": "Stage all changes before committing (default: false)"
+                            "description": "Stage all changes before commit"
                         }
                     },
                     "required": ["message"]
@@ -199,7 +201,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "files": {
                             "type": "string",
-                            "description": "Space-separated list of files to stage"
+                            "description": "Files to stage (space-separated)"
                         }
                     },
                     "required": ["files"]
@@ -213,7 +215,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Name for new branch (omit to list branches)"
+                            "description": "New branch name (omit to list)"
                         }
                     }
                 }),
@@ -226,7 +228,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "branch": {
                             "type": "string",
-                            "description": "Branch name to switch to"
+                            "description": "Branch to switch to"
                         }
                     },
                     "required": ["branch"]
@@ -240,7 +242,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "remote": {
                             "type": "string",
-                            "description": "Remote name (default: origin)"
+                            "description": "Remote (default: origin)"
                         },
                         "branch": {
                             "type": "string",
@@ -257,14 +259,16 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "properties": {
                         "remote": {
                             "type": "string",
-                            "description": "Remote name (default: origin)"
+                            "description": "Remote (default: origin)"
                         }
                     }
                 }),
             },
             FunctionDecl {
                 name: "run_command".to_string(),
-                description: "Run a shell command and return its output. Use for tasks like running tests, installing packages, or checking system state. Commands time out after 60 seconds by default.".to_string(),
+                description:
+                    "Run a shell command. Times out after configured timeout (default 60s)."
+                        .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -274,7 +278,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                         },
                         "timeout": {
                             "type": "integer",
-                            "description": "Timeout in seconds (default: 60). Use higher values for long-running commands like builds."
+                            "description": "Timeout in seconds (default: 60)"
                         }
                     },
                     "required": ["command"]
@@ -282,7 +286,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             },
             FunctionDecl {
                 name: "read_image".to_string(),
-                description: "Read an image file and return its base64 data for visual analysis. Supports PNG, JPEG, GIF, WebP, BMP.".to_string(),
+                description: "Read an image file (PNG, JPEG, GIF, WebP, BMP) as base64".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -296,14 +300,14 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             },
             FunctionDecl {
                 name: "web_fetch".to_string(),
-                description: "Fetch a URL and return its text content. Useful for reading documentation, API references, or web pages. HTML is stripped to plain text."
+                description: "Fetch a URL and return text content (HTML stripped to plain text)"
                     .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "url": {
                             "type": "string",
-                            "description": "The URL to fetch (must start with http:// or https://)"
+                            "description": "URL to fetch (http:// or https://)"
                         }
                     },
                     "required": ["url"]
@@ -311,22 +315,22 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             },
             FunctionDecl {
                 name: "todo_update".to_string(),
-                description: "Manage a task list to track progress on complex tasks. Use this to break work into steps, track what's done, and stay organized. The task list is shown to the user and persists across tool calls."
+                description: "Track tasks: add/start/done/remove/list. Persists across tool calls."
                     .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "action": {
                             "type": "string",
-                            "description": "Action: 'add' (new task), 'start' (mark in-progress), 'done' (mark complete), 'remove' (delete task), 'list' (show all)"
+                            "description": "Action: add, start, done, remove, list"
                         },
                         "text": {
                             "type": "string",
-                            "description": "Task description (required for 'add' action)"
+                            "description": "Task description (for 'add')"
                         },
                         "id": {
                             "type": "integer",
-                            "description": "Task ID (required for 'start', 'done', 'remove' actions)"
+                            "description": "Task ID (for start/done/remove)"
                         }
                     },
                     "required": ["action"]
