@@ -55,6 +55,9 @@ pub struct App {
     pub search_mode: bool,
     pub search_query: String,
     pub search_match: Option<String>,
+
+    // Google Search grounding toggle
+    pub search_grounding: bool,
 }
 
 impl App {
@@ -88,6 +91,7 @@ impl App {
             search_mode: false,
             search_query: String::new(),
             search_match: None,
+            search_grounding: false,
         };
 
         // Welcome message (rendered as styled widget in ui.rs when messages are empty)
@@ -190,6 +194,16 @@ impl App {
                 }
                 if user_input == "/_override_smart" {
                     agent.model_override = crate::agent::loop_runner::ModelOverride::Smart;
+                    let _ = done_tx.send(());
+                    continue;
+                }
+                if user_input == "/_search_on" {
+                    agent.search_grounding = true;
+                    let _ = done_tx.send(());
+                    continue;
+                }
+                if user_input == "/_search_off" {
+                    agent.search_grounding = false;
                     let _ = done_tx.send(());
                     continue;
                 }
@@ -332,6 +346,24 @@ impl App {
                     self.messages.push(DisplayMessage::Status(
                         "New session started. Previous session saved.".to_string(),
                     ));
+                }
+                CommandResponse::ToggleSearch => {
+                    self.search_grounding = !self.search_grounding;
+                    let status = if self.search_grounding {
+                        "Google Search grounding ON - responses include web search results"
+                    } else {
+                        "Google Search grounding OFF"
+                    };
+                    self.messages
+                        .push(DisplayMessage::Status(status.to_string()));
+                    if let Some(tx) = &self.agent_tx {
+                        let cmd = if self.search_grounding {
+                            "/_search_on"
+                        } else {
+                            "/_search_off"
+                        };
+                        let _ = tx.send(cmd.to_string());
+                    }
                 }
                 CommandResponse::Compact => {
                     if let Some(tx) = &self.agent_tx {
@@ -960,6 +992,7 @@ pub enum CommandResponse {
     ShowTodo,
     Resume(Option<String>), // Optional session ID
     NewSession,
+    ToggleSearch,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -1122,6 +1155,7 @@ impl App {
             search_mode: false,
             search_query: String::new(),
             search_match: None,
+            search_grounding: false,
         }
     }
 }

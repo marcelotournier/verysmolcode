@@ -337,6 +337,12 @@
 - [x] edit_file now supports replace_all:true for global find-replace
 - [x] 504 unit tests
 
+## Completed (v0.12.1) — Google Search Grounding & Popup Scroll Fix
+- [x] /search command: toggle Google Search grounding for web-aware AI responses
+- [x] Google Search grounding wired into agent loop (adds googleSearch tool to API requests)
+- [x] Fixed command suggestion popup scrolling: now scrolls to follow selected item
+- [x] Popup shows position indicator when list exceeds 10 items
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC

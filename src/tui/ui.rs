@@ -392,12 +392,14 @@ fn format_token_count(count: u64) -> String {
 }
 
 fn draw_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
-    let count = app.command_suggestions.len().min(10); // Max 10 visible
-    if count == 0 {
+    let total = app.command_suggestions.len();
+    if total == 0 {
         return;
     }
 
-    let height = count as u16 + 2; // +2 for borders
+    let max_visible = 10;
+    let visible = total.min(max_visible);
+    let height = visible as u16 + 2; // +2 for borders
     let width = 50u16.min(input_area.width);
 
     // Position popup above the input box
@@ -409,19 +411,42 @@ fn draw_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
     // Clear background
     f.render_widget(Clear, popup_area);
 
+    // Compute scroll offset so selected item is always visible
+    let scroll_offset = if let Some(idx) = app.suggestion_index {
+        if idx >= max_visible {
+            idx - max_visible + 1
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    let title = if total > max_visible {
+        format!(" Commands ({}/{}) ", scroll_offset + 1, total)
+    } else {
+        " Commands ".to_string()
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ACCENT_COLOR))
         .style(Style::default().bg(SUGGESTION_BG))
-        .title(" Commands ")
+        .title(title)
         .title_alignment(Alignment::Left);
 
     let inner = block.inner(popup_area);
     f.render_widget(block, popup_area);
 
-    // Render each suggestion
+    // Render each suggestion with scroll offset
     let mut lines: Vec<Line> = Vec::new();
-    for (i, (cmd, desc)) in app.command_suggestions.iter().take(10).enumerate() {
+    for (i, (cmd, desc)) in app
+        .command_suggestions
+        .iter()
+        .enumerate()
+        .skip(scroll_offset)
+        .take(max_visible)
+    {
         let is_selected = app.suggestion_index == Some(i);
         let bg = if is_selected {
             SUGGESTION_HIGHLIGHT

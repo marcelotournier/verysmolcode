@@ -39,6 +39,7 @@ pub struct AgentLoop {
     undo_history: UndoHistory,
     startup_warnings: Vec<String>,
     pub todo: TodoList,
+    pub search_grounding: bool,
 }
 
 /// Max characters for a single tool result before truncation.
@@ -175,6 +176,7 @@ impl AgentLoop {
             undo_history: UndoHistory::new(),
             startup_warnings,
             todo: TodoList::new(),
+            search_grounding: false,
         })
     }
 
@@ -186,8 +188,10 @@ impl AgentLoop {
             ToolRegistry::declarations()
         };
 
-        // NOTE: Google Search grounding disabled for now - may not work on free tier
-        // tools.push(ToolDeclaration::google_search());
+        // Google Search grounding — toggled via /search command
+        if self.search_grounding {
+            tools.push(ToolDeclaration::google_search());
+        }
 
         // Add MCP tool declarations
         if !self.mcp_clients.is_empty() {

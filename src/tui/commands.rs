@@ -23,6 +23,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "Add an MCP server: /mcp-add <name> <command> [args...]",
     ),
     ("/mcp-rm", "Remove an MCP server: /mcp-rm <name>"),
+    (
+        "/search",
+        "Toggle Google Search grounding (web-aware responses)",
+    ),
     ("/version", "Show version information"),
     ("/retry", "Retry the last message"),
     ("/todo", "Show current task list"),
@@ -67,6 +71,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  /retry      Retry last message\n");
             help.push_str("  /resume     Resume previous session\n");
             help.push_str("  /new        Start new conversation\n");
+            help.push_str("  /search     Toggle web search grounding\n");
             help.push_str("  /config     Show/edit configuration\n");
             help.push_str("\n\u{1F50C} MCP Servers\n");
             help.push_str("  /mcp        List MCP servers\n");
@@ -294,6 +299,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
                 }
             }
         }
+        "/search" => CommandResponse::ToggleSearch,
         "/version" => CommandResponse::Message(format!(
             "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
             env!("CARGO_PKG_VERSION")
