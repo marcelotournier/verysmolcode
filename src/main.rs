@@ -22,21 +22,33 @@ fn main() {
 
     // Handle -p/--prompt mode (like claude -p)
     if args.len() >= 2 && (args[1] == "-p" || args[1] == "--prompt") {
-        let prompt = if args.len() >= 3 {
-            // Prompt from command line args
+        let cli_prompt = if args.len() >= 3 {
             args[2..].join(" ")
         } else {
-            // Read from stdin (pipe mode)
+            String::new()
+        };
+
+        // Read stdin if it's piped (not a terminal)
+        let stdin_content = if !io::stdin().is_terminal() {
             let mut input = String::new();
             io::stdin().read_to_string(&mut input).unwrap_or_default();
             input.trim().to_string()
+        } else {
+            String::new()
         };
 
-        if prompt.is_empty() {
-            eprintln!("Usage: vsc -p \"your prompt here\"");
-            eprintln!("       echo \"your prompt\" | vsc -p");
-            std::process::exit(1);
-        }
+        // Combine: "prompt\n\n<stdin content>" or just one of them
+        let prompt = match (cli_prompt.is_empty(), stdin_content.is_empty()) {
+            (false, false) => format!("{}\n\n{}", cli_prompt, stdin_content),
+            (false, true) => cli_prompt,
+            (true, false) => stdin_content,
+            (true, true) => {
+                eprintln!("Usage: vsc -p \"your prompt here\"");
+                eprintln!("       echo \"your prompt\" | vsc -p");
+                eprintln!("       cat file.py | vsc -p \"review this code\"");
+                std::process::exit(1);
+            }
+        };
 
         run_prompt_mode(&prompt);
         return;
