@@ -97,6 +97,15 @@
 - [x] macOS and Windows wheel builds in CI
 - [x] 213 unit tests
 
+## Completed (v0.8.3)
+- [x] Smarter conversation compaction (6 msgs + topic hints + token estimation)
+- [x] UTF-8 safe truncation across all text cutting points
+- [x] Consolidated safety path checks (/usr, /bin, /sbin, /lib)
+- [x] Windows compatibility for run_shell (cmd /C)
+- [x] Enhanced system prompt with working directory and tool guidance
+- [x] Critic notifies user when skipped due to rate limits
+- [x] 218 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
