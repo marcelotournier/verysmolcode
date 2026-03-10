@@ -208,9 +208,41 @@ impl AgentLoop {
                 self.config.max_tokens_per_response,
             );
 
-            // Make API call
+            // Make API call with automatic fallback on rate limit/overload
             on_event(AgentEvent::Status("Thinking...".to_string()));
-            let response = self.client.generate(model, &request)?;
+            let response = match self.client.generate(model, &request) {
+                Ok(resp) => resp,
+                Err(e)
+                    if e.contains("429")
+                        || e.contains("rate")
+                        || e.contains("quota")
+                        || e.contains("503")
+                        || e.contains("high demand") =>
+                {
+                    // Try fallback model
+                    if let Some(fb) = self.client.router.fallback_for(model) {
+                        on_event(AgentEvent::Status(format!(
+                            "{} unavailable, falling back to {}",
+                            model.display_name(),
+                            fb.display_name()
+                        )));
+                        on_event(AgentEvent::ModelSwitch(fb.display_name().to_string()));
+                        // Rebuild request with fallback model's thinking config
+                        let fb_request = build_request(
+                            &system_prompt,
+                            self.conversation.clone(),
+                            Some(self.get_tools(self.planning_mode)),
+                            fb,
+                            self.config.temperature,
+                            self.config.max_tokens_per_response,
+                        );
+                        self.client.generate(fb, &fb_request)?
+                    } else {
+                        return Err(e);
+                    }
+                }
+                Err(e) => return Err(e),
+            };
 
             // Track tokens
             if let Some(ref usage) = response.usage_metadata {
