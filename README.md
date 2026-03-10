@@ -98,6 +98,7 @@ vsc -v
 | Key        | Action              |
 |------------|---------------------|
 | `Ctrl+C`   | Cancel/Quit         |
+| `Ctrl+D`   | Quit (empty input)  |
 | `Ctrl+L`   | Clear screen        |
 | `Up/Down`  | Input history / Navigate command popup |
 | `PgUp/PgDn`| Scroll output       |
@@ -176,7 +177,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (437+ tests)
+# Unit tests (474+ tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)
