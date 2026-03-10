@@ -60,6 +60,7 @@ vsc
 | `/fast`      | Use Flash models for next message (saves budget)  |
 | `/smart`     | Use Pro models for next message (best quality)    |
 | `/plan`      | Toggle planning mode (read-only, Pro model)       |
+| `/undo`      | Undo the last batch of file changes                |
 | `/tokens`    | Show detailed token usage and rate limits         |
 | `/status`    | Show rate limits and token usage                  |
 | `/model`     | Show available models and rate limits             |
@@ -153,7 +154,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (181 tests)
+# Unit tests (190 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)

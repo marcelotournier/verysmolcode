@@ -115,6 +115,32 @@ impl App {
                     let _ = done_tx.send(());
                     continue;
                 }
+                if user_input == "/_undo" {
+                    match agent.undo() {
+                        Ok(paths) => {
+                            if paths.is_empty() {
+                                let _ = event_tx
+                                    .send(AgentEvent::Status("Nothing to undo.".to_string()));
+                            } else {
+                                let msg = format!(
+                                    "Reverted {} file(s):\n{}",
+                                    paths.len(),
+                                    paths
+                                        .iter()
+                                        .map(|p| format!("  - {}", p))
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                );
+                                let _ = event_tx.send(AgentEvent::Text(msg));
+                            }
+                        }
+                        Err(e) => {
+                            let _ = event_tx.send(AgentEvent::Status(e));
+                        }
+                    }
+                    let _ = done_tx.send(());
+                    continue;
+                }
                 if user_input == "/_override_fast" {
                     agent.model_override = crate::agent::loop_runner::ModelOverride::Fast;
                     let _ = done_tx.send(());
@@ -207,6 +233,13 @@ impl App {
                     self.messages.push(DisplayMessage::User(input.clone()));
                     self.messages
                         .push(DisplayMessage::Assistant(self.token_summary()));
+                }
+                CommandResponse::Undo => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    if let Some(tx) = &self.agent_tx {
+                        let _ = tx.send("/_undo".to_string());
+                    }
+                    self.is_processing = true;
                 }
                 CommandResponse::SetModelOverride(mode) => {
                     // Send override command to agent thread
@@ -434,6 +467,7 @@ pub enum CommandResponse {
     TogglePlan,
     ShowTokens,
     SetModelOverride(String), // "fast" or "smart"
+    Undo,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -626,5 +660,6 @@ mod tests {
         let _plan = CommandResponse::TogglePlan;
         let _tokens = CommandResponse::ShowTokens;
         let _override = CommandResponse::SetModelOverride("fast".to_string());
+        let _undo = CommandResponse::Undo;
     }
 }

@@ -13,6 +13,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/tokens", "Show detailed token usage and rate limits"),
     ("/status", "Show rate limits and token usage"),
     ("/config", "Show/set config: /config set <key> <value>"),
+    ("/undo", "Undo the last batch of file changes"),
     ("/compact", "Manually compact conversation to save tokens"),
     ("/model", "Show available models and current selection"),
     ("/mcp", "List configured MCP servers"),
@@ -49,6 +50,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
         "/smart" | "/s" => CommandResponse::SetModelOverride("smart".to_string()),
         "/plan" => CommandResponse::TogglePlan,
         "/tokens" | "/status" => CommandResponse::ShowTokens,
+        "/undo" | "/u" => CommandResponse::Undo,
         "/config" => {
             if let Some(set_rest) = args.strip_prefix("set ") {
                 let set_args: Vec<&str> = set_rest.splitn(2, ' ').collect();

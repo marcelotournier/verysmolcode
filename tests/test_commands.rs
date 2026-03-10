@@ -205,6 +205,18 @@ fn test_smart_command() {
 }
 
 #[test]
+fn test_undo_command() {
+    assert!(matches!(
+        handle_command("/undo"),
+        verysmolcode::tui::app::CommandResponse::Undo
+    ));
+    assert!(matches!(
+        handle_command("/u"),
+        verysmolcode::tui::app::CommandResponse::Undo
+    ));
+}
+
+#[test]
 fn test_config_set_temperature() {
     let msg = get_message("/config set temperature 0.5");
     assert!(msg.contains("Temperature set to"));

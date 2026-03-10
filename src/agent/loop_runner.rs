@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::mcp::client::McpClient;
 use crate::mcp::config::McpConfig;
 use crate::tools::registry::ToolRegistry;
+use crate::tools::undo::UndoHistory;
 
 /// Represents a message in the conversation
 #[derive(Debug, Clone)]
@@ -34,6 +35,7 @@ pub struct AgentLoop {
     mcp_clients: Vec<McpClient>,
     files_modified: bool, // Track if any write/edit tools were used this turn
     pub model_override: ModelOverride,
+    undo_history: UndoHistory,
 }
 
 /// Max characters for a single tool result before truncation.
@@ -135,6 +137,7 @@ impl AgentLoop {
             mcp_clients,
             files_modified: false,
             model_override: ModelOverride::None,
+            undo_history: UndoHistory::new(),
         })
     }
 
@@ -217,6 +220,9 @@ impl AgentLoop {
     where
         F: FnMut(AgentEvent),
     {
+        // Begin undo tracking for this turn
+        self.undo_history.begin_turn();
+
         // Add user message to conversation
         self.conversation.push(Content {
             role: Some("user".to_string()),
@@ -376,6 +382,14 @@ impl AgentLoop {
                     continue;
                 }
 
+                // Snapshot file before mutation for undo support
+                if matches!(call.name.as_str(), "write_file" | "edit_file") {
+                    if let Some(path) = call.args.get("path").and_then(|v| v.as_str()) {
+                        self.undo_history
+                            .snapshot_before_write(std::path::Path::new(path));
+                    }
+                }
+
                 // Try MCP tools first, then built-in tools
                 let result = self
                     .try_execute_mcp(&call.name, &call.args)
@@ -434,6 +448,9 @@ impl AgentLoop {
         if !self.planning_mode && had_tool_calls && self.files_modified {
             self.run_critic(user_input, &mut on_event)?;
         }
+
+        // Commit undo history for this turn
+        self.undo_history.commit_turn();
 
         Ok(())
     }
@@ -621,6 +638,11 @@ impl AgentLoop {
     pub fn clear_conversation(&mut self) {
         self.conversation.clear();
         self.total_conversation_tokens = 0;
+    }
+
+    /// Undo the last turn's file changes
+    pub fn undo(&mut self) -> Result<Vec<String>, String> {
+        self.undo_history.undo()
     }
 }
 
