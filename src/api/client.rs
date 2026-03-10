@@ -49,6 +49,7 @@ impl GeminiClient {
 
         let resp = ureq::post(&url)
             .set("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(120))
             .send_json(body)
             .map_err(|e| format!("API request failed: {}", e))?;
 
