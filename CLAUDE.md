@@ -38,6 +38,10 @@
 
 # TODO / Progress Tracker
 
+## Bugs
+- [ ] BUG: Can't select text in the TUI screen after the scrolling fix (v0.13.0)
+- [ ] Reduce scroll speed (scroll_up/scroll_down increments too high) — fast scroll may be contributing to performance lag
+
 ## Completed (v0.7.7)
 - [x] Repo setup (gitignore, license, maturin/pyo3)
 - [x] Gemini API client with 6-model routing (Gemini 3.x + 2.5)
@@ -368,6 +372,17 @@
 - [x] Tool results now word-wrap instead of truncating on one line
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
+
+## Completed (v0.13.1) — Test Coverage & Quality
+- [x] 22 new app.rs tests: submit_input (11 slash commands), tick events (9 channel tests)
+- [x] 16 new ui.rs tests: render_markdown, render_inline_markdown, format_token_count, build_message_lines
+- [x] 8 new web.rs tests: is_text_content_type for XML, YAML, JS, CSV, binary rejection
+- [x] 2 new config.rs tests: save/reload roundtrip, load defaults
+- [x] web_fetch: support XML, YAML, JS, CSV, markdown content types
+- [x] Telegram: replace unwrap() with ? in from_config (panic prevention)
+- [x] MCP: 30s timeout prevents hung servers from blocking indefinitely
+- [x] Git/shell: truncation flags (truncated:true + total_bytes) for partial data
+- [x] 479 unit tests total
 
 ## Completed (v0.13.0) — Telegram Bot & Scrolling Fix
 - [x] Telegram bot integration via @BotFather (/telegram setup, /telegram-test, /telegram-off)
