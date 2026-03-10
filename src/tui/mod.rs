@@ -65,41 +65,56 @@ fn run_app(
     app: &mut App,
 ) -> Result<(), String> {
     loop {
-        terminal
-            .draw(|f| ui::draw(f, app))
-            .map_err(|e| format!("Draw error: {}", e))?;
+        // Only redraw when state has changed
+        if app.dirty {
+            terminal
+                .draw(|f| ui::draw(f, app))
+                .map_err(|e| format!("Draw error: {}", e))?;
+            app.dirty = false;
+        }
 
         // Poll for events with a timeout so we can update the UI
         if event::poll(std::time::Duration::from_millis(100))
             .map_err(|e| format!("Event poll error: {}", e))?
         {
             match event::read() {
-                Ok(Event::Key(key)) => match (key.modifiers, key.code) {
-                    (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                        if app.is_processing {
-                            app.cancel_processing();
-                        } else {
-                            return Ok(());
+                Ok(Event::Key(key)) => {
+                    app.dirty = true;
+                    match (key.modifiers, key.code) {
+                        (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                            if app.is_processing {
+                                app.cancel_processing();
+                            } else {
+                                return Ok(());
+                            }
+                        }
+                        (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
+                            app.clear_screen();
+                        }
+                        _ => {
+                            input::handle_key(app, key);
                         }
                     }
-                    (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
-                        app.clear_screen();
-                    }
-                    _ => {
-                        input::handle_key(app, key);
-                    }
-                },
+                }
                 Ok(Event::Mouse(mouse)) => match mouse.kind {
                     MouseEventKind::ScrollUp => app.scroll_up(),
                     MouseEventKind::ScrollDown => app.scroll_down(),
                     _ => {}
                 },
+                Ok(Event::Resize(_, _)) => {
+                    app.dirty = true;
+                }
                 _ => {}
             }
         }
 
         // Process any pending agent work
         app.tick();
+
+        // Force periodic redraw when processing (for spinner animation)
+        if app.is_processing {
+            app.dirty = true;
+        }
 
         if app.should_quit {
             return Ok(());

@@ -70,6 +70,9 @@ pub struct App {
     // Telegram integration
     telegram_rx: Option<mpsc::Receiver<String>>,
     pub telegram_enabled: bool,
+
+    // Dirty flag: only redraw when state changes
+    pub dirty: bool,
 }
 
 impl App {
@@ -110,6 +113,7 @@ impl App {
             auto_compact_threshold: crate::config::Config::load().auto_compact_threshold,
             telegram_rx: None,
             telegram_enabled: false,
+            dirty: true,
         };
 
         // Start the agent thread
@@ -766,6 +770,7 @@ impl App {
 
         if needs_scroll {
             self.scroll_to_bottom();
+            self.dirty = true;
         }
 
         // Check if agent is done
@@ -777,6 +782,7 @@ impl App {
         if is_done {
             self.is_processing = false;
             self.model_name = "Ready".to_string();
+            self.dirty = true;
         }
     }
 
@@ -785,23 +791,28 @@ impl App {
         self.model_name = "Ready".to_string();
         self.messages
             .push(DisplayMessage::Status("Cancelled.".to_string()));
+        self.dirty = true;
     }
 
     pub fn clear_screen(&mut self) {
         self.messages.clear();
         self.scroll_offset = 0;
+        self.dirty = true;
     }
 
     pub fn scroll_up(&mut self) {
         self.scroll_offset = self.scroll_offset.saturating_add(3);
+        self.dirty = true;
     }
 
     pub fn scroll_down(&mut self) {
         self.scroll_offset = self.scroll_offset.saturating_sub(3);
+        self.dirty = true;
     }
 
     fn scroll_to_bottom(&mut self) {
         self.scroll_offset = 0;
+        self.dirty = true;
     }
 
     pub fn history_up(&mut self) {
@@ -1370,6 +1381,7 @@ impl App {
             auto_compact_threshold: 24000,
             telegram_rx: None,
             telegram_enabled: false,
+            dirty: true,
         }
     }
 }

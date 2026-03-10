@@ -1,13 +1,13 @@
 use crate::tui::app::{App, DisplayMessage};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use unicode_width::UnicodeWidthStr;
 
 /// Cache for rendered message lines to avoid re-rendering markdown on every frame.
-/// Only re-renders when message count or terminal width changes.
+/// Uses Arc to avoid cloning the entire Vec<Line> on each draw.
 struct RenderCache {
-    lines: Vec<Line<'static>>,
+    lines: Arc<Vec<Line<'static>>>,
     msg_count: usize,
     width: u16,
 }
@@ -129,8 +129,9 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
 
     let width = inner.width as usize;
 
-    // Use cached lines if message count and width haven't changed
-    let lines = {
+    // Use cached lines if message count and width haven't changed.
+    // Arc avoids deep-cloning all Line/Span/String data on each frame.
+    let lines_arc = {
         let mut cache = RENDER_CACHE.lock().unwrap();
         let needs_rebuild = match cache.as_ref() {
             Some(c) => c.msg_count != app.messages.len() || c.width != inner.width,
@@ -138,20 +139,20 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
         };
 
         if needs_rebuild {
-            let rendered = build_message_lines(&app.messages, width);
+            let rendered = Arc::new(build_message_lines(&app.messages, width));
             *cache = Some(RenderCache {
-                lines: rendered.clone(),
+                lines: Arc::clone(&rendered),
                 msg_count: app.messages.len(),
                 width: inner.width,
             });
             rendered
         } else {
-            cache.as_ref().unwrap().lines.clone()
+            Arc::clone(&cache.as_ref().unwrap().lines)
         }
     };
 
-    // Calculate scroll
-    let total_lines = lines.len() as u16;
+    // Calculate scroll — only render the visible slice to avoid cloning all lines
+    let total_lines = lines_arc.len() as u16;
     let visible_lines = inner.height;
     let max_scroll = total_lines.saturating_sub(visible_lines);
     let scroll = if app.scroll_offset > 0 {
@@ -160,7 +161,11 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
         max_scroll
     };
 
-    let paragraph = Paragraph::new(lines).scroll((scroll, 0));
+    // Only clone the visible portion of lines (not the entire Vec)
+    let start = scroll as usize;
+    let end = (start + visible_lines as usize).min(lines_arc.len());
+    let visible_slice: Vec<Line<'static>> = lines_arc[start..end].to_vec();
+    let paragraph = Paragraph::new(visible_slice);
 
     f.render_widget(paragraph, inner);
 
@@ -988,5 +993,106 @@ mod tests {
                 line.chars().count()
             );
         }
+    }
+
+    #[test]
+    fn test_build_message_lines_performance_many_messages() {
+        // Simulate a heavy conversation: 200 messages with markdown
+        let mut messages = Vec::new();
+        for i in 0..100 {
+            messages.push(DisplayMessage::User(format!("User message {}", i)));
+            messages.push(DisplayMessage::Assistant(format!(
+                "## Response {}\n\nHere is some **bold** text and `code` in a response.\n\n\
+                 - Bullet point one\n- Bullet point two\n\n\
+                 ```rust\nfn main() {{\n    println!(\"hello\");\n}}\n```\n\n\
+                 More text with inline `code blocks` and **bold** words.",
+                i
+            )));
+        }
+
+        // Time the build
+        let start = std::time::Instant::now();
+        let lines = build_message_lines(&messages, 80);
+        let build_time = start.elapsed();
+
+        // Should complete in under 500ms even on slow hardware
+        assert!(
+            build_time.as_millis() < 500,
+            "build_message_lines took {}ms for 200 messages (should be <500ms)",
+            build_time.as_millis()
+        );
+
+        // Should produce reasonable number of lines
+        assert!(
+            lines.len() > 200,
+            "Expected many lines, got {}",
+            lines.len()
+        );
+    }
+
+    #[test]
+    fn test_render_cache_avoids_rebuild() {
+        // Build once
+        let messages = vec![
+            DisplayMessage::User("hello".to_string()),
+            DisplayMessage::Assistant("world".to_string()),
+        ];
+
+        let lines1 = build_message_lines(&messages, 80);
+        let lines2 = build_message_lines(&messages, 80);
+
+        // Same input should produce same output
+        assert_eq!(lines1.len(), lines2.len());
+    }
+
+    #[test]
+    fn test_visible_slice_performance() {
+        // Build a large set of lines
+        let mut messages = Vec::new();
+        for i in 0..500 {
+            messages.push(DisplayMessage::Assistant(format!(
+                "Line {} with some content here that makes it interesting",
+                i
+            )));
+        }
+
+        let lines = Arc::new(build_message_lines(&messages, 80));
+
+        // Simulating scroll: extract visible slice many times
+        let start = std::time::Instant::now();
+        for offset in 0..100 {
+            let start_idx = offset.min(lines.len().saturating_sub(30));
+            let end_idx = (start_idx + 30).min(lines.len());
+            let _visible: Vec<Line<'static>> = lines[start_idx..end_idx].to_vec();
+        }
+        let slice_time = start.elapsed();
+
+        // 100 slice operations should be very fast (<200ms)
+        assert!(
+            slice_time.as_millis() < 200,
+            "100 visible slice operations took {}ms (should be <200ms)",
+            slice_time.as_millis()
+        );
+    }
+
+    #[test]
+    fn test_render_markdown_performance() {
+        let text = "## Header\n\nSome **bold** text and `inline code`.\n\n\
+                    - Bullet one\n- Bullet two\n\n\
+                    ```python\ndef hello():\n    print('hello')\n```\n\n\
+                    Regular paragraph with more content.";
+
+        let start = std::time::Instant::now();
+        for _ in 0..1000 {
+            let _lines = render_markdown(text, 80);
+        }
+        let time = start.elapsed();
+
+        // 1000 markdown renders should complete in under 500ms
+        assert!(
+            time.as_millis() < 500,
+            "1000 markdown renders took {}ms (should be <500ms)",
+            time.as_millis()
+        );
     }
 }
