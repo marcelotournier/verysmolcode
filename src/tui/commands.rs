@@ -399,3 +399,254 @@ pub fn autocomplete(input: &str) -> Vec<String> {
         .map(|(cmd, _)| cmd.to_string())
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_help_command() {
+        let resp = handle_command("/help");
+        assert!(
+            matches!(resp, CommandResponse::Message(ref s) if s.contains("Available Commands"))
+        );
+    }
+
+    #[test]
+    fn test_help_alias() {
+        let resp = handle_command("/h");
+        assert!(
+            matches!(resp, CommandResponse::Message(ref s) if s.contains("Available Commands"))
+        );
+    }
+
+    #[test]
+    fn test_quit_command() {
+        assert!(matches!(handle_command("/quit"), CommandResponse::Quit));
+        assert!(matches!(handle_command("/q"), CommandResponse::Quit));
+        assert!(matches!(handle_command("/exit"), CommandResponse::Quit));
+    }
+
+    #[test]
+    fn test_clear_command() {
+        assert!(matches!(handle_command("/clear"), CommandResponse::Clear));
+    }
+
+    #[test]
+    fn test_fast_command() {
+        let resp = handle_command("/fast");
+        assert!(matches!(resp, CommandResponse::SetModelOverride(ref s) if s == "fast"));
+        let resp = handle_command("/f");
+        assert!(matches!(resp, CommandResponse::SetModelOverride(ref s) if s == "fast"));
+    }
+
+    #[test]
+    fn test_smart_command() {
+        let resp = handle_command("/smart");
+        assert!(matches!(resp, CommandResponse::SetModelOverride(ref s) if s == "smart"));
+        let resp = handle_command("/s");
+        assert!(matches!(resp, CommandResponse::SetModelOverride(ref s) if s == "smart"));
+    }
+
+    #[test]
+    fn test_plan_command() {
+        assert!(matches!(
+            handle_command("/plan"),
+            CommandResponse::TogglePlan
+        ));
+    }
+
+    #[test]
+    fn test_tokens_command() {
+        assert!(matches!(
+            handle_command("/tokens"),
+            CommandResponse::ShowTokens
+        ));
+        assert!(matches!(
+            handle_command("/status"),
+            CommandResponse::ShowTokens
+        ));
+    }
+
+    #[test]
+    fn test_undo_command() {
+        assert!(matches!(handle_command("/undo"), CommandResponse::Undo));
+        assert!(matches!(handle_command("/u"), CommandResponse::Undo));
+    }
+
+    #[test]
+    fn test_save_no_args() {
+        let resp = handle_command("/save");
+        assert!(matches!(resp, CommandResponse::Save(None)));
+    }
+
+    #[test]
+    fn test_save_with_filename() {
+        let resp = handle_command("/save myfile.md");
+        assert!(matches!(resp, CommandResponse::Save(Some(ref s)) if s == "myfile.md"));
+    }
+
+    #[test]
+    fn test_compact_command() {
+        assert!(matches!(
+            handle_command("/compact"),
+            CommandResponse::Compact
+        ));
+    }
+
+    #[test]
+    fn test_model_command() {
+        let resp = handle_command("/model");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("Gemini")));
+    }
+
+    #[test]
+    fn test_search_command() {
+        assert!(matches!(
+            handle_command("/search"),
+            CommandResponse::ToggleSearch
+        ));
+    }
+
+    #[test]
+    fn test_copy_command() {
+        assert!(matches!(handle_command("/copy"), CommandResponse::CopyLast));
+        assert!(matches!(handle_command("/cp"), CommandResponse::CopyLast));
+    }
+
+    #[test]
+    fn test_version_command() {
+        let resp = handle_command("/version");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("VerySmolCode")));
+    }
+
+    #[test]
+    fn test_new_command() {
+        assert!(matches!(
+            handle_command("/new"),
+            CommandResponse::NewSession
+        ));
+        assert!(matches!(handle_command("/n"), CommandResponse::NewSession));
+    }
+
+    #[test]
+    fn test_retry_command() {
+        assert!(matches!(handle_command("/retry"), CommandResponse::Retry));
+        assert!(matches!(handle_command("/r"), CommandResponse::Retry));
+    }
+
+    #[test]
+    fn test_todo_command() {
+        assert!(matches!(handle_command("/todo"), CommandResponse::ShowTodo));
+        assert!(matches!(handle_command("/t"), CommandResponse::ShowTodo));
+    }
+
+    #[test]
+    fn test_resume_no_args() {
+        let resp = handle_command("/resume");
+        assert!(matches!(resp, CommandResponse::Resume(None)));
+    }
+
+    #[test]
+    fn test_resume_with_id() {
+        let resp = handle_command("/resume abc123");
+        assert!(matches!(resp, CommandResponse::Resume(Some(ref s)) if s == "abc123"));
+    }
+
+    #[test]
+    fn test_unknown_command() {
+        let resp = handle_command("/nonexistent");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("Unknown command")));
+    }
+
+    #[test]
+    fn test_case_insensitive() {
+        assert!(matches!(handle_command("/QUIT"), CommandResponse::Quit));
+        assert!(matches!(
+            handle_command("/Help"),
+            CommandResponse::Message(_)
+        ));
+    }
+
+    #[test]
+    fn test_config_show() {
+        let resp = handle_command("/config");
+        assert!(
+            matches!(resp, CommandResponse::Message(ref s) if s.contains("Current configuration"))
+        );
+    }
+
+    #[test]
+    fn test_config_set_missing_value() {
+        let resp = handle_command("/config set temperature");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("Usage")));
+    }
+
+    #[test]
+    fn test_config_set_unknown_key() {
+        let resp = handle_command("/config set foobar 42");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("Unknown key")));
+    }
+
+    #[test]
+    fn test_mcp_add_missing_args() {
+        let resp = handle_command("/mcp-add");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("Usage")));
+    }
+
+    #[test]
+    fn test_mcp_rm_missing_name() {
+        let resp = handle_command("/mcp-rm");
+        assert!(matches!(resp, CommandResponse::Message(ref s) if s.contains("Usage")));
+    }
+
+    #[test]
+    fn test_diff_command() {
+        let resp = handle_command("/diff");
+        assert!(matches!(resp, CommandResponse::Message(_)));
+    }
+
+    #[test]
+    fn test_autocomplete_slash() {
+        let results = autocomplete("/");
+        assert!(results.len() > 10); // There are 20+ commands
+        assert!(results.contains(&"/help".to_string()));
+    }
+
+    #[test]
+    fn test_autocomplete_partial() {
+        let results = autocomplete("/he");
+        assert_eq!(results, vec!["/help"]);
+    }
+
+    #[test]
+    fn test_autocomplete_no_match() {
+        let results = autocomplete("/zzz");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_autocomplete_multiple_matches() {
+        let results = autocomplete("/mc");
+        assert!(results.len() >= 3); // /mcp, /mcp-add, /mcp-rm
+    }
+
+    #[test]
+    fn test_commands_list_not_empty() {
+        assert!(COMMANDS.len() > 20);
+    }
+
+    #[test]
+    fn test_commands_all_start_with_slash() {
+        for (cmd, _) in COMMANDS {
+            assert!(cmd.starts_with('/'), "Command {} doesn't start with /", cmd);
+        }
+    }
+
+    #[test]
+    fn test_commands_no_empty_descriptions() {
+        for (cmd, desc) in COMMANDS {
+            assert!(!desc.is_empty(), "Command {} has empty description", cmd);
+        }
+    }
+}

@@ -299,3 +299,235 @@ impl ModelRouter {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- ModelId tests --
+
+    #[test]
+    fn test_all_models_count() {
+        assert_eq!(ModelId::all().len(), 6);
+    }
+
+    #[test]
+    fn test_api_names_unique() {
+        let names: Vec<&str> = ModelId::all().iter().map(|m| m.api_name()).collect();
+        let mut deduped = names.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(names.len(), deduped.len(), "API names must be unique");
+    }
+
+    #[test]
+    fn test_display_names_unique() {
+        let names: Vec<&str> = ModelId::all().iter().map(|m| m.display_name()).collect();
+        let mut deduped = names.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(names.len(), deduped.len(), "Display names must be unique");
+    }
+
+    #[test]
+    fn test_tier_classification() {
+        assert_eq!(ModelId::Gemini31Pro.tier(), ModelTier::Pro);
+        assert_eq!(ModelId::Gemini25Pro.tier(), ModelTier::Pro);
+        assert_eq!(ModelId::Gemini3Flash.tier(), ModelTier::Flash);
+        assert_eq!(ModelId::Gemini25Flash.tier(), ModelTier::Flash);
+        assert_eq!(ModelId::Gemini31FlashLite.tier(), ModelTier::FlashLite);
+        assert_eq!(ModelId::Gemini25FlashLite.tier(), ModelTier::FlashLite);
+    }
+
+    #[test]
+    fn test_supports_thinking() {
+        for model in ModelId::all() {
+            assert!(model.supports_thinking());
+        }
+    }
+
+    #[test]
+    fn test_api_name_contains_gemini() {
+        for model in ModelId::all() {
+            assert!(
+                model.api_name().contains("gemini"),
+                "{} API name doesn't contain 'gemini'",
+                model.display_name()
+            );
+        }
+    }
+
+    // -- RateLimit tests --
+
+    #[test]
+    fn test_pro_rate_limits() {
+        let limit = RateLimit::for_model(ModelId::Gemini31Pro);
+        assert_eq!(limit.rpm, 5);
+        assert_eq!(limit.rpd, 25);
+    }
+
+    #[test]
+    fn test_flash_rate_limits() {
+        let limit = RateLimit::for_model(ModelId::Gemini3Flash);
+        assert_eq!(limit.rpm, 10);
+        assert_eq!(limit.rpd, 250);
+    }
+
+    #[test]
+    fn test_flash_lite_rate_limits() {
+        let limit = RateLimit::for_model(ModelId::Gemini31FlashLite);
+        assert_eq!(limit.rpm, 15);
+        assert_eq!(limit.rpd, 1000);
+    }
+
+    #[test]
+    fn test_same_tier_same_limits() {
+        let g3 = RateLimit::for_model(ModelId::Gemini31Pro);
+        let g25 = RateLimit::for_model(ModelId::Gemini25Pro);
+        assert_eq!(g3.rpm, g25.rpm);
+        assert_eq!(g3.rpd, g25.rpd);
+    }
+
+    // -- RateLimiter tests --
+
+    #[test]
+    fn test_rate_limiter_new() {
+        let limiter = RateLimiter::new(ModelId::Gemini3Flash);
+        assert_eq!(limiter.model(), ModelId::Gemini3Flash);
+    }
+
+    #[test]
+    fn test_rate_limiter_can_request_fresh() {
+        let mut limiter = RateLimiter::new(ModelId::Gemini3Flash);
+        assert!(limiter.can_request());
+    }
+
+    #[test]
+    fn test_rate_limiter_record_and_remaining() {
+        let mut limiter = RateLimiter::new(ModelId::Gemini31Pro);
+        assert_eq!(limiter.remaining_today(), 25);
+        limiter.record_request();
+        assert_eq!(limiter.remaining_today(), 24);
+        limiter.record_request();
+        assert_eq!(limiter.remaining_today(), 23);
+    }
+
+    #[test]
+    fn test_rate_limiter_rpm_exhaustion() {
+        let mut limiter = RateLimiter::new(ModelId::Gemini31Pro); // 5 RPM
+        for _ in 0..5 {
+            limiter.record_request();
+        }
+        assert!(!limiter.can_request());
+    }
+
+    #[test]
+    fn test_rate_limiter_wait_duration_fresh() {
+        let mut limiter = RateLimiter::new(ModelId::Gemini3Flash);
+        assert_eq!(limiter.wait_duration(), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn test_rate_limiter_wait_duration_rpm_exhausted() {
+        let mut limiter = RateLimiter::new(ModelId::Gemini31Pro); // 5 RPM
+        for _ in 0..5 {
+            limiter.record_request();
+        }
+        let wait = limiter.wait_duration();
+        assert!(wait.is_some());
+        assert!(wait.unwrap() > Duration::ZERO);
+    }
+
+    #[test]
+    fn test_rate_limiter_wait_duration_rpd_exhausted() {
+        let mut limiter = RateLimiter::new(ModelId::Gemini31Pro); // 25 RPD
+        for _ in 0..25 {
+            limiter.record_request();
+        }
+        assert_eq!(limiter.wait_duration(), None); // Daily limit = no wait possible
+    }
+
+    // -- ModelRouter tests --
+
+    #[test]
+    fn test_router_pick_smart_prefers_pro() {
+        let mut router = ModelRouter::new();
+        let model = router.pick_model(true);
+        assert_eq!(model, Some(ModelId::Gemini31Pro));
+    }
+
+    #[test]
+    fn test_router_pick_fast_prefers_flash() {
+        let mut router = ModelRouter::new();
+        let model = router.pick_model(false);
+        assert_eq!(model, Some(ModelId::Gemini3Flash));
+    }
+
+    #[test]
+    fn test_router_record_and_pick() {
+        let mut router = ModelRouter::new();
+        // Exhaust Gemini 3 Flash RPM (10 requests)
+        for _ in 0..10 {
+            router.record_request(ModelId::Gemini3Flash);
+        }
+        // Should fall back to 2.5 Flash
+        let model = router.pick_model(false);
+        assert_eq!(model, Some(ModelId::Gemini25Flash));
+    }
+
+    #[test]
+    fn test_router_fallback_chain() {
+        let mut router = ModelRouter::new();
+        // Fallback from 3.1 Pro should include 2.5 Pro, then Flash tiers
+        let fb = router.fallback_for(ModelId::Gemini31Pro);
+        assert_eq!(fb, Some(ModelId::Gemini25Pro));
+    }
+
+    #[test]
+    fn test_router_fallback_exhausted() {
+        let mut router = ModelRouter::new();
+        let fb = router.fallback_for(ModelId::Gemini25FlashLite);
+        assert_eq!(fb, None); // No fallback for the last model
+    }
+
+    #[test]
+    fn test_router_fallback_skips_exhausted() {
+        let mut router = ModelRouter::new();
+        // Exhaust 2.5 Pro
+        for _ in 0..5 {
+            router.record_request(ModelId::Gemini25Pro);
+        }
+        // Fallback from 3.1 Pro should skip exhausted 2.5 Pro -> go to 3 Flash
+        let fb = router.fallback_for(ModelId::Gemini31Pro);
+        assert_eq!(fb, Some(ModelId::Gemini3Flash));
+    }
+
+    #[test]
+    fn test_router_status_line() {
+        let mut router = ModelRouter::new();
+        let status = router.status_line();
+        assert!(status.contains("3Pro:25"));
+        assert!(status.contains("3F:250"));
+        assert!(status.contains("3L:1000"));
+    }
+
+    #[test]
+    fn test_router_default() {
+        let router = ModelRouter::default();
+        assert_eq!(router.g3_pro.model(), ModelId::Gemini31Pro);
+    }
+
+    #[test]
+    fn test_router_all_exhausted() {
+        let mut router = ModelRouter::new();
+        // Exhaust all models' RPM
+        for model in ModelId::all() {
+            let rpm = RateLimit::for_model(*model).rpm;
+            for _ in 0..rpm {
+                router.record_request(*model);
+            }
+        }
+        assert_eq!(router.pick_model(true), None);
+        assert_eq!(router.pick_model(false), None);
+    }
+}
