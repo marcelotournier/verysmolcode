@@ -4,16 +4,22 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 
 ## Features
 
-- **Smart Model Routing**: Automatically selects between Gemini Pro, Flash, and Flash-Lite based on task complexity, with graceful fallback when rate limits are hit
+- **Smart Model Routing**: 6 models across Gemini 3.x and 2.5 — automatically selects the best available model based on task complexity, with graceful fallback when rate-limited or overloaded
 - **Planning Mode**: `/plan` for read-only analysis using Pro models before making changes
-- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading
-- **Web Search**: Gemini's native Google Search grounding for finding docs and examples
-- **MCP Support**: Connect to MCP servers (context7, playwright, etc.) via `/mcp-add`
+- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading (18 tools)
+- **MCP Support**: Connect to MCP servers (context7, playwright, etc.) via `/mcp-add` — tools are live in the agent loop
+- **Critic Verification**: After tool use, a lightweight model verifies the work was done correctly
 - **Token-Aware**: Conversation compaction, thinking budget control, and rate limit tracking
 - **Safe by Default**: Blocks destructive operations, validates paths, and prevents dangerous commands
 - **Lightweight**: ~5MB binary, minimal memory footprint, runs on Raspberry Pi 3
 
 ## Installation
+
+### With pip (Python)
+
+```bash
+pip install verysmolcode
+```
 
 ### From Source (Rust)
 
@@ -27,13 +33,7 @@ cd verysmolcode
 cargo install --path .
 ```
 
-### With pip (Python)
-
-```bash
-pip install verysmolcode
-```
-
-### From Source (Python)
+### From Source (Python wheel)
 
 ```bash
 pip install maturin
@@ -84,13 +84,16 @@ vsc
 
 ## Model Tiers (Free Tier)
 
-| Model              | RPM | RPD  | Best For         |
-|--------------------|-----|------|------------------|
-| Gemini 2.5 Pro     | 5   | 25   | Complex tasks    |
-| Gemini 2.5 Flash   | 10  | 250  | General coding   |
-| Gemini 2.0 Flash-Lite | 15 | 1000 | Simple tasks  |
+| Model                    | RPM | RPD  | Best For         |
+|--------------------------|-----|------|------------------|
+| Gemini 3.1 Pro           | 5   | 25   | Complex tasks    |
+| Gemini 3 Flash           | 10  | 250  | General coding   |
+| Gemini 3.1 Flash-Lite    | 15  | 1000 | Simple tasks     |
+| Gemini 2.5 Pro           | 5   | 25   | Fallback complex |
+| Gemini 2.5 Flash         | 10  | 250  | Fallback general |
+| Gemini 2.5 Flash-Lite    | 15  | 1000 | Fallback simple  |
 
-VerySmolCode automatically manages rate limits across all models. When one model is exhausted, it falls back to the next available one.
+VerySmolCode automatically manages rate limits across all 6 models independently. When one model is exhausted, it falls back to the next available one. Gemini 3 models are preferred; 2.5 models serve as fallbacks, effectively doubling your daily quota per tier.
 
 ## Configuration
 
@@ -113,13 +116,13 @@ src/
   main.rs           - Entry point
   config.rs         - Configuration management
   api/
-    client.rs       - Gemini REST API client
-    models.rs       - Model definitions, rate limiting, routing
+    client.rs       - Gemini REST API client with fallback
+    models.rs       - 6 model definitions, rate limiting, routing
     types.rs        - Request/response type definitions
   agent/
-    loop_runner.rs  - Main agent loop with planning mode
+    loop_runner.rs  - Main agent loop with planning mode and critic
   tools/
-    file_ops.rs     - File read/write/edit/list
+    file_ops.rs     - File read/write/edit/list + image reading
     grep.rs         - Search and find files
     git.rs          - Git operations and shell commands
     web.rs          - Web page fetching
@@ -133,6 +136,16 @@ src/
     ui.rs           - Terminal UI rendering
     input.rs        - Keyboard input handling
     commands.rs     - Slash command processing
+```
+
+## Testing
+
+```bash
+# Unit tests (90 tests)
+cargo test
+
+# Integration test (requires tmux + GEMINI_API_KEY)
+./tests/integration_test.sh
 ```
 
 ## License

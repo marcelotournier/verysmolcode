@@ -2,7 +2,7 @@
 - Repository: https://github.com/marcelotournier/verysmolcode
 - Create VerySmolCode, a rust-based TUI that mimics Claude Code and works with Gemini API free tier. GEMINI_API_KEY is in the env variable
 - TUI must be lightweight enough to run in a memory constrained device such as a raspberrypi 3 (1GB RAM)
-- Make sure this respects the free tier API limits for models. Smarter models get fewer requests: Pro gives 5/min and 100/day, Flash 10/min and 250/day, Flash-Lite 15/min and 1,000/day. Look for the most up to date models in google documentation
+- Make sure this respects the free tier API limits for models. Smarter models get fewer requests: Pro gives 5/min and 25/day, Flash 10/min and 250/day, Flash-Lite 15/min and 1,000/day. We use 6 models (3 from Gemini 3.x, 3 from Gemini 2.5) with independent rate limits per model
 - Use pro for harder tasks and flash for simpler stuff OR fallback to flash if pro is capped
 - Whenever you use flash, use chain-of-thought (<think> xml tokens) to maximize its performance, flash is bad for tasks if it doesn't use CoT.
 - Gemini API documentation at https://ai.google.dev/gemini-api/docs/quickstart#rest
@@ -38,33 +38,31 @@
 
 # TODO / Progress Tracker
 
-## Completed (v0.3.0)
+## Completed (v0.6.0)
 - [x] Repo setup (gitignore, license, maturin/pyo3)
-- [x] Gemini API client with Pro/Flash/Flash-Lite model routing
+- [x] Gemini API client with 6-model routing (Gemini 3.x + 2.5)
 - [x] Rate limiting with per-model RPM/RPD tracking
-- [x] Tool system: file read/write/edit, grep, find, git, shell, web fetch
+- [x] Tool system: 18 tools (file read/write/edit, grep, find, git, shell, web fetch, image reading)
 - [x] TUI: blue theme, input history, slash commands, scrolling
-- [x] Agent loop with automatic model fallback
-- [x] Critic verification (Flash-Lite reviews completed work)
+- [x] Agent loop with automatic model fallback (503/429 aware)
+- [x] Critic verification (cheapest available model reviews completed work)
 - [x] Planning mode (/plan) with read-only tools
-- [x] Chain-of-thought for Flash models (thinkingConfig)
+- [x] Chain-of-thought for Flash and Gemini 3.1 Pro models (thinkingConfig)
 - [x] Safety: blocks destructive ops, validates paths
-- [x] MCP client support (stdio JSON-RPC protocol)
+- [x] MCP client support (stdio JSON-RPC protocol) - wired into agent loop
 - [x] MCP server management (/mcp, /mcp-add, /mcp-rm)
+- [x] Image reading tool (base64 encode + send as InlineData to Gemini)
 - [x] Pre-commit hooks (fmt, clippy, tests)
-- [x] 47 unit tests
+- [x] 90 unit tests across 5 test files
+- [x] Integration test (tmux + bottle.py todo app + pytest validation)
 - [x] README.md documentation
-- [x] CI/CD with GitHub Actions
-- [x] GitHub releases (v0.2.0, v0.3.0)
-
-## In Progress
-- [ ] Integration tests (tmux + bottle.py todo app)
-- [ ] Wire MCP tools into the agent loop (currently config-only)
+- [x] CI/CD pipeline: test -> integration-test -> build-wheels -> test-wheel -> publish-pypi
+- [x] GitHub releases (v0.2.0 through v0.6.0)
+- [x] PyPI publishing pipeline (gated on all tests passing)
 
 ## Planned
-- [ ] Image reading tool (base64 encode + send to Gemini)
 - [ ] Token usage dashboard in TUI
 - [ ] Configuration editing via slash commands (/config set)
-- [ ] More test coverage (target 100%)
 - [ ] Release binary builds for ARM (Raspberry Pi)
+- [ ] Increase test coverage toward 100%
 
