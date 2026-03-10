@@ -233,7 +233,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let right = if !app.status_line.is_empty() {
         format!("\u{1F4CA} {}", app.status_line)
     } else {
-        "\u{1F4A1} Ctrl+C: quit | /help".to_string()
+        "\u{1F4A1} Ctrl+C/D: quit | /help".to_string()
     };
 
     let width = area.width as usize;

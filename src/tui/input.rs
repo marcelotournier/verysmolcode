@@ -94,6 +94,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     'l' => {
                         app.clear_screen();
                     }
+                    'd' => {
+                        // Unix EOF convention: quit when input is empty
+                        if app.input.is_empty() {
+                            app.should_quit = true;
+                        }
+                    }
                     _ => {}
                 }
             } else {
@@ -408,6 +414,26 @@ mod tests {
         handle_key(&mut app, esc);
         assert!(app.command_suggestions.is_empty());
         assert!(app.suggestion_index.is_none());
+    }
+
+    #[test]
+    fn test_ctrl_d_quits_on_empty_input() {
+        let mut app = App::test_new();
+        app.input = String::new();
+        let key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_ctrl_d_noop_with_input() {
+        let mut app = App::test_new();
+        app.input = "some text".to_string();
+        app.cursor_pos = 9;
+        let key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL);
+        handle_key(&mut app, key);
+        assert!(!app.should_quit);
+        assert_eq!(app.input, "some text"); // input unchanged
     }
 
     #[test]
