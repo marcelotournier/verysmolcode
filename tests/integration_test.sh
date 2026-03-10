@@ -54,25 +54,42 @@ tmux new-session -d -s "$SESSION" -x 80 -y 30
 tmux send-keys -t "$SESSION" "cd $TEST_DIR && GEMINI_API_KEY=$GEMINI_API_KEY $VSC" Enter
 
 # Wait for TUI to initialize
-sleep 3
+sleep 5
+
+# Capture initial screen
+echo "TUI initialized, screen capture:"
+tmux capture-pane -t "$SESSION" -p 2>/dev/null | head -5
 
 # Send the test command
 echo "Sending test command..."
 tmux send-keys -t "$SESSION" "Create a simple todo list app using Python bottle.py. The app should have: 1) Add todo item 2) List all items 3) Mark item as done 4) Delete item. Create app.py and requirements.txt." Enter
 
 # Wait for the agent to work (generous timeout for free tier)
-echo "Waiting for agent to complete (up to 120 seconds)..."
-TIMEOUT=120
+echo "Waiting for agent to complete (up to 180 seconds)..."
+TIMEOUT=180
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
     sleep 10
     ELAPSED=$((ELAPSED + 10))
     echo "  ... ${ELAPSED}s elapsed"
 
+    # Capture tmux screen for debugging
+    if [ $((ELAPSED % 30)) -eq 0 ]; then
+        echo "--- tmux screen capture ---"
+        tmux capture-pane -t "$SESSION" -p 2>/dev/null | tail -10
+        echo "--- end capture ---"
+    fi
+
     # Check if files were created
     if [ -f "$TEST_DIR/app.py" ] && [ -f "$TEST_DIR/requirements.txt" ]; then
         echo -e "${GREEN}Files detected!${NC}"
         break
+    fi
+
+    # Also check what files exist in test dir
+    if [ $ELAPSED -eq $TIMEOUT ]; then
+        echo "Files in test dir:"
+        ls -la "$TEST_DIR/" 2>/dev/null || echo "(empty)"
     fi
 done
 
