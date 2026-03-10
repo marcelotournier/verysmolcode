@@ -349,6 +349,13 @@
 - [x] Current task displayed in status bar (shows progress: [done/total] task)
 - [x] Todo updates sent from agent loop to TUI in real-time via TodoUpdate event
 
+## Completed (v0.12.3) — Auto-Todo, @file#line-range
+- [x] System prompt now instructs agent to always create todo lists before file operations
+- [x] @file#10-25 line range syntax: reference specific lines of a file
+- [x] @file#5 single line reference support
+- [x] Invalid line ranges gracefully fall back to reading whole file
+- [x] 5 new unit tests for line range parsing and expansion
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -369,8 +376,8 @@ These are table-stakes features that both OpenCode and Claude Code have.
 ### P1.2 - File Reference with @ Autocomplete ✅ (v0.11.2)
 - [x] Type @ to trigger file path autocomplete dropdown
 - [x] Fuzzy matching against project files (git ls-files)
-- [ ] @file.rs#10-25 line range syntax (future enhancement)
-- [ ] File content injected into conversation context
+- [x] @file.rs#10-25 line range syntax
+- [x] File content injected into conversation context
 - [ ] Frecency ranking (recently used files first)
 
 ### P1.3 - Multi-Line Input
@@ -378,10 +385,10 @@ These are table-stakes features that both OpenCode and Claude Code have.
 - [x] Visual indicator showing multi-line mode (green border, line count)
 - [ ] Paste detection (auto multi-line for pasted content)
 
-### P1.4 - Bash Mode (! prefix)
-- [ ] Type !command to run shell directly without AI
-- [ ] Output displayed in TUI and added to conversation context
-- [ ] History integration
+### P1.4 - Bash Mode (! prefix) ✅
+- [x] Type !command to run shell directly without AI
+- [x] Output displayed in TUI and added to conversation context
+- [x] History integration
 
 ### P1.5 - Improved Diff Display ✅ (v0.11.2, basic)
 - [x] /diff command showing git diff in TUI

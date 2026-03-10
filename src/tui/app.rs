@@ -466,18 +466,46 @@ impl App {
         }
     }
 
+    /// Parse @file references, supporting optional line ranges: @file.rs#10-25
     fn expand_file_refs(input: &str) -> String {
         let mut result = input.to_string();
         let mut attachments = Vec::new();
 
         // Find @file references (@ at start or after space, no space in path)
         for word in input.split_whitespace() {
-            if let Some(path) = word.strip_prefix('@') {
-                if !path.is_empty() && !path.starts_with('/') {
-                    let file_path = std::path::Path::new(path);
-                    if file_path.exists() && file_path.is_file() {
-                        match std::fs::read_to_string(file_path) {
-                            Ok(contents) => {
+            if let Some(ref_str) = word.strip_prefix('@') {
+                if ref_str.is_empty() || ref_str.starts_with('/') {
+                    continue;
+                }
+
+                // Parse optional line range: path#start-end or path#line
+                let (path_str, line_range) = if let Some(hash_pos) = ref_str.find('#') {
+                    let path = &ref_str[..hash_pos];
+                    let range_str = &ref_str[hash_pos + 1..];
+                    let range = Self::parse_line_range(range_str);
+                    (path, range)
+                } else {
+                    (ref_str, None)
+                };
+
+                let file_path = std::path::Path::new(path_str);
+                if file_path.exists() && file_path.is_file() {
+                    match std::fs::read_to_string(file_path) {
+                        Ok(contents) => {
+                            let (display_ref, selected) = if let Some((start, end)) = line_range {
+                                let lines: Vec<&str> = contents.lines().collect();
+                                let start_idx = start.saturating_sub(1); // 1-based to 0-based
+                                let end_idx = end.min(lines.len());
+                                let selected_lines: Vec<String> = lines[start_idx..end_idx]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, l)| format!("{:>4} {}", start_idx + i + 1, l))
+                                    .collect();
+                                (
+                                    format!("{}#L{}-L{}", path_str, start, end),
+                                    selected_lines.join("\n"),
+                                )
+                            } else {
                                 let truncated = if contents.len() > 8000 {
                                     format!(
                                         "{}...\n(truncated, {} bytes total)",
@@ -487,14 +515,15 @@ impl App {
                                 } else {
                                     contents
                                 };
-                                attachments.push(format!(
-                                    "\n\n--- Contents of {} ---\n{}\n--- End of {} ---",
-                                    path, truncated, path
-                                ));
-                            }
-                            Err(_) => {
-                                attachments.push(format!("\n\n[Could not read file: {}]", path));
-                            }
+                                (path_str.to_string(), truncated)
+                            };
+                            attachments.push(format!(
+                                "\n\n--- Contents of {} ---\n{}\n--- End of {} ---",
+                                display_ref, selected, display_ref
+                            ));
+                        }
+                        Err(_) => {
+                            attachments.push(format!("\n\n[Could not read file: {}]", path_str));
                         }
                     }
                 }
@@ -505,6 +534,22 @@ impl App {
             result.push_str(&attachments.join(""));
         }
         result
+    }
+
+    /// Parse line range: "10-25" -> Some((10, 25)), "10" -> Some((10, 10))
+    fn parse_line_range(s: &str) -> Option<(usize, usize)> {
+        if let Some((start_s, end_s)) = s.split_once('-') {
+            let start = start_s.parse::<usize>().ok()?;
+            let end = end_s.parse::<usize>().ok()?;
+            if start > 0 && end >= start {
+                return Some((start, end));
+            }
+        } else if let Ok(line) = s.parse::<usize>() {
+            if line > 0 {
+                return Some((line, line));
+            }
+        }
+        None
     }
 
     pub fn tick(&mut self) {
@@ -1820,6 +1865,40 @@ mod tests {
         let result = App::expand_file_refs("email user@example.com");
         // @ in middle of word, not a file ref
         assert_eq!(result, "email user@example.com");
+    }
+
+    #[test]
+    fn test_expand_file_refs_line_range() {
+        // Cargo.toml exists and has at least 5 lines
+        let result = App::expand_file_refs("look at @Cargo.toml#1-3");
+        assert!(result.contains("--- Contents of Cargo.toml#L1-L3 ---"));
+        assert!(result.contains("[package]"));
+        // Should NOT contain the full file
+        assert!(!result.contains("[dependencies]"));
+    }
+
+    #[test]
+    fn test_expand_file_refs_single_line() {
+        let result = App::expand_file_refs("check @Cargo.toml#1");
+        assert!(result.contains("--- Contents of Cargo.toml#L1-L1 ---"));
+    }
+
+    #[test]
+    fn test_parse_line_range() {
+        assert_eq!(App::parse_line_range("10-25"), Some((10, 25)));
+        assert_eq!(App::parse_line_range("5"), Some((5, 5)));
+        assert_eq!(App::parse_line_range("0"), None);
+        assert_eq!(App::parse_line_range("abc"), None);
+        assert_eq!(App::parse_line_range("25-10"), None); // end < start
+        assert_eq!(App::parse_line_range(""), None);
+    }
+
+    #[test]
+    fn test_expand_file_refs_invalid_range() {
+        // Invalid range should not crash, just skip expansion
+        let result = App::expand_file_refs("check @Cargo.toml#abc");
+        // With invalid range, should still read the whole file (no # parse)
+        assert!(result.contains("--- Contents of Cargo.toml ---"));
     }
 
     #[test]
