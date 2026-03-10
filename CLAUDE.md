@@ -369,6 +369,13 @@
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
 
+## Completed (v0.12.5) — Markdown Polish, Better Auto-Todo
+- [x] Numbered lists in markdown renderer (1. 2. 3.)
+- [x] Horizontal rules (---) as thin box-drawing lines
+- [x] System prompt gives explicit step-by-step todo instructions
+- [x] 5 new tests for current_task_summary
+- [x] 293 unit tests total
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
