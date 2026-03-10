@@ -157,6 +157,14 @@
 - [x] test_api.rs: Pro/FlashLite thinking budgets, fallback chain end, record_request
 - [x] test_commands.rs: config set (max_tokens, compact_threshold, safety), /retry, /todo aliases
 
+## Completed (v0.9.4)
+- [x] Gemini 2.5 Pro chain-of-thought enabled (was excluded, now all 6 models use thinking)
+- [x] Smarter is_complex_task: two-tier keyword system (strong vs medium+complexity)
+  - Simple "create a file" → Flash; "implement entire auth system" → Pro
+  - Saves Pro budget (25/day) for truly complex tasks
+- [x] README updated with todo list, code reviewer, 19 tools, 487 tests
+- [x] 487 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
