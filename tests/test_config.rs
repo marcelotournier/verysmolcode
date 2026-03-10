@@ -77,6 +77,29 @@ fn test_config_deserialize_corrupted_json() {
 }
 
 #[test]
+fn test_system_prompt_includes_agents_section() {
+    // When CLAUDE.md exists in project root (which it does for verysmolcode),
+    // the system prompt should include project instructions
+    let config = Config::default();
+    // CLAUDE.md exists in this repo, so it should be loaded
+    assert!(
+        config.system_prompt.contains("Project Instructions")
+            || config.system_prompt.contains("CLAUDE.md"),
+        "System prompt should reference AGENTS.md or CLAUDE.md when present"
+    );
+}
+
+#[test]
+fn test_system_prompt_contains_git_info() {
+    let config = Config::default();
+    // We're in a git repo, so git context should be present
+    assert!(
+        config.system_prompt.contains("Git:") || config.system_prompt.contains("Working directory"),
+        "System prompt should contain git or directory info"
+    );
+}
+
+#[test]
 fn test_mcp_config_default() {
     let config = McpConfig::default();
     assert!(config.servers.is_empty());

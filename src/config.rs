@@ -70,8 +70,9 @@ fn default_system_prompt() -> String {
         .unwrap_or_else(|_| ".".to_string());
 
     let git_context = git_context_summary();
+    let agents_instructions = load_agents_instructions();
 
-    format!(
+    let mut prompt = format!(
         r#"You are VerySmolCode, a friendly coding assistant. Be concise, use emojis, celebrate wins.
 
 Working directory: {cwd}
@@ -85,7 +86,86 @@ Working directory: {cwd}
         cwd = cwd,
         git_context = git_context,
         timeout = super::tools::git::command_timeout_secs()
-    )
+    );
+
+    if !agents_instructions.is_empty() {
+        prompt.push_str("\n\n## Project Instructions\n");
+        prompt.push_str(&agents_instructions);
+    }
+
+    prompt
+}
+
+/// Load AGENTS.md / CLAUDE.md instructions from user-level and project-level.
+/// User-level: ~/.config/verysmolcode/AGENTS.md
+/// Project-level: AGENTS.md or CLAUDE.md in git root or cwd
+fn load_agents_instructions() -> String {
+    let mut sections = Vec::new();
+    let max_size = 8000; // Cap at 8K chars to save tokens
+
+    // 1. User-level AGENTS.md
+    let user_path = Config::config_dir().join("AGENTS.md");
+    if let Ok(content) = std::fs::read_to_string(&user_path) {
+        if !content.trim().is_empty() {
+            let truncated = safe_truncate(&content, max_size);
+            sections.push(format!(
+                "### User Instructions ({})\n{}",
+                user_path.display(),
+                truncated
+            ));
+        }
+    }
+
+    // 2. Project-level: find git root, then check for AGENTS.md and CLAUDE.md
+    let project_root = find_project_root();
+    if let Some(root) = &project_root {
+        for filename in &["AGENTS.md", "CLAUDE.md"] {
+            let path = root.join(filename);
+            if path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if !content.trim().is_empty() {
+                        let truncated = safe_truncate(&content, max_size);
+                        sections.push(format!(
+                            "### {} ({})\n{}",
+                            filename,
+                            path.display(),
+                            truncated
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    sections.join("\n\n")
+}
+
+fn find_project_root() -> Option<PathBuf> {
+    // Try git root first
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if output.status.success() {
+            let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !root.is_empty() {
+                return Some(PathBuf::from(root));
+            }
+        }
+    }
+    // Fall back to cwd
+    std::env::current_dir().ok()
+}
+
+fn safe_truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...\n(truncated, {} bytes total)", &s[..end], s.len())
 }
 
 fn git_context_summary() -> String {

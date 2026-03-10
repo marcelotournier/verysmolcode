@@ -67,7 +67,7 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             FunctionDecl {
                 name: "edit_file".to_string(),
                 description:
-                    "Replace old_string with new_string in a file (old_string must be unique)"
+                    "Replace old_string with new_string in a file. Set replace_all:true for global replace"
                         .to_string(),
                 parameters: json!({
                     "type": "object",
@@ -78,11 +78,15 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                         },
                         "old_string": {
                             "type": "string",
-                            "description": "Exact string to find (must be unique)"
+                            "description": "Exact string to find"
                         },
                         "new_string": {
                             "type": "string",
                             "description": "Replacement string"
+                        },
+                        "replace_all": {
+                            "type": "boolean",
+                            "description": "Replace all occurrences (default false)"
                         }
                     },
                     "required": ["path", "old_string", "new_string"]

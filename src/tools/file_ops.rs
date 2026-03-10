@@ -100,6 +100,11 @@ pub fn edit_file(args: &Value) -> Value {
         None => return json!({"error": "Missing 'new_string' argument"}),
     };
 
+    let replace_all = args
+        .get("replace_all")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     let path = resolve_path(path);
     if let Err(e) = check_safe_path(&path) {
         return json!({"error": e});
@@ -124,7 +129,7 @@ pub fn edit_file(args: &Value) -> Value {
                     "hint": hint
                 });
             }
-            if count > 1 {
+            if count > 1 && !replace_all {
                 // Show line numbers of each match so the model can provide more context
                 let match_lines: Vec<usize> = content
                     .lines()
@@ -133,17 +138,22 @@ pub fn edit_file(args: &Value) -> Value {
                     .map(|(i, _)| i + 1)
                     .collect();
                 return json!({
-                    "error": format!("old_string found {} times - must be unique. Provide more surrounding context.", count),
+                    "error": format!("old_string found {} times - must be unique. Provide more surrounding context, or use replace_all:true.", count),
                     "match_lines": match_lines
                 });
             }
 
-            let new_content = content.replacen(old_string, new_string, 1);
+            let new_content = if replace_all {
+                content.replace(old_string, new_string)
+            } else {
+                content.replacen(old_string, new_string, 1)
+            };
+            let replacements = if replace_all { count } else { 1 };
             match fs::write(&path, &new_content) {
                 Ok(()) => json!({
                     "success": true,
                     "path": path.display().to_string(),
-                    "replacements": 1
+                    "replacements": replacements
                 }),
                 Err(e) => json!({"error": format!("Failed to write: {}", e)}),
             }

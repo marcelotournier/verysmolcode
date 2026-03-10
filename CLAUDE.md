@@ -327,6 +327,16 @@
 - [x] Agent always knows current branch and modified files
 - [x] Status shows up to 10 changed files, with count for overflow
 
+## Completed (v0.12.0) — AGENTS.md Support & edit_file replace_all
+- [x] AGENTS.md/CLAUDE.md auto-loading (like Codex/Claude Code)
+  - User-level: ~/.config/verysmolcode/AGENTS.md
+  - Project-level: AGENTS.md or CLAUDE.md in git root
+  - Content injected into system prompt as "Project Instructions"
+  - Truncated at 8K chars to save tokens
+- [x] /agents command: shows which instruction files are loaded
+- [x] edit_file now supports replace_all:true for global find-replace
+- [x] 504 unit tests
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC

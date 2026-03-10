@@ -32,6 +32,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     ("/diff", "Show git diff (unstaged changes)"),
     ("/new", "Start a new conversation (saves current session)"),
+    (
+        "/agents",
+        "Show loaded AGENTS.md / CLAUDE.md instruction files",
+    ),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -295,6 +299,42 @@ pub fn handle_command(input: &str) -> CommandResponse {
             env!("CARGO_PKG_VERSION")
         )),
         "/new" | "/n" => CommandResponse::NewSession,
+        "/agents" => {
+            let config_dir = crate::config::Config::config_dir();
+            let user_path = config_dir.join("AGENTS.md");
+            let mut msg = String::from("AGENTS.md / CLAUDE.md instruction files:\n\n");
+
+            // User-level
+            if user_path.exists() {
+                let size = std::fs::metadata(&user_path).map(|m| m.len()).unwrap_or(0);
+                msg.push_str(&format!(
+                    "  [loaded] {} ({} bytes)\n",
+                    user_path.display(),
+                    size
+                ));
+            } else {
+                msg.push_str(&format!(
+                    "  [not found] {} (create for user-level instructions)\n",
+                    user_path.display()
+                ));
+            }
+
+            // Project-level
+            let root = std::env::current_dir().unwrap_or_default();
+            for filename in &["AGENTS.md", "CLAUDE.md"] {
+                let path = root.join(filename);
+                if path.exists() {
+                    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                    msg.push_str(&format!("  [loaded] {} ({} bytes)\n", path.display(), size));
+                }
+            }
+
+            msg.push_str(
+                "\nThese files are automatically injected into the AI's system prompt.\n\
+                 Create AGENTS.md in your project root for project-specific instructions.",
+            );
+            CommandResponse::Message(msg)
+        }
         "/retry" | "/r" => CommandResponse::Retry,
         "/diff" | "/d" => {
             let diff_args = if args.is_empty() { "" } else { args };
