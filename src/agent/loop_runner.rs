@@ -2,6 +2,8 @@ use crate::api::client::{build_request, extract_response, GeminiClient};
 use crate::api::models::ModelId;
 use crate::api::types::*;
 use crate::config::Config;
+use crate::mcp::client::McpClient;
+use crate::mcp::config::McpConfig;
 use crate::tools::registry::ToolRegistry;
 
 /// Represents a message in the conversation
@@ -21,6 +23,7 @@ pub struct AgentLoop {
     conversation: Vec<Content>,
     total_conversation_tokens: u32,
     planning_mode: bool,
+    mcp_clients: Vec<McpClient>,
 }
 
 const PLANNING_SYSTEM_PROMPT: &str = r#"You are in PLANNING MODE. Your job is to analyze the task and create a detailed, step-by-step implementation plan.
@@ -50,13 +53,89 @@ Format your plan as:
 
 impl AgentLoop {
     pub fn new() -> Result<Self, String> {
+        // Start configured MCP servers
+        let mcp_config = McpConfig::load();
+        let mut mcp_clients = Vec::new();
+        for server_config in &mcp_config.servers {
+            match McpClient::start(server_config) {
+                Ok(client) => {
+                    mcp_clients.push(client);
+                }
+                Err(_) => {
+                    // Non-fatal: skip servers that fail to start
+                }
+            }
+        }
+
         Ok(Self {
             client: GeminiClient::new()?,
             config: Config::load(),
             conversation: Vec::new(),
             total_conversation_tokens: 0,
             planning_mode: false,
+            mcp_clients,
         })
+    }
+
+    /// Get tool declarations including MCP tools
+    fn get_tools(&self, read_only: bool) -> Vec<ToolDeclaration> {
+        let mut tools = if read_only {
+            ToolRegistry::read_only_declarations()
+        } else {
+            ToolRegistry::declarations()
+        };
+
+        // Add MCP tool declarations
+        if !self.mcp_clients.is_empty() {
+            let mut mcp_decls = Vec::new();
+            for client in &self.mcp_clients {
+                for tool in &client.tools {
+                    let params = tool
+                        .input_schema
+                        .clone()
+                        .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}}));
+                    mcp_decls.push(FunctionDecl {
+                        name: format!("mcp_{}_{}", client.name(), tool.name),
+                        description: tool
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| format!("MCP tool: {}", tool.name)),
+                        parameters: params,
+                    });
+                }
+            }
+            if !mcp_decls.is_empty() {
+                tools.push(ToolDeclaration {
+                    function_declarations: mcp_decls,
+                });
+            }
+        }
+
+        tools
+    }
+
+    /// Try to execute an MCP tool call, returns None if not an MCP tool
+    fn try_execute_mcp(
+        &mut self,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Option<serde_json::Value> {
+        // MCP tools are prefixed: mcp_{server}_{tool}
+        let stripped = name.strip_prefix("mcp_")?;
+
+        // Find which MCP client owns this tool
+        for client in &mut self.mcp_clients {
+            let prefix = format!("{}_", client.name());
+            if let Some(tool_name) = stripped.strip_prefix(&prefix) {
+                // Found the right client, call the tool
+                return match client.call_tool(tool_name, args.clone()) {
+                    Ok(result) => Some(result),
+                    Err(e) => Some(serde_json::json!({"error": e})),
+                };
+            }
+        }
+
+        None
     }
 
     pub fn set_planning_mode(&mut self, enabled: bool) {
@@ -114,12 +193,8 @@ impl AgentLoop {
                 self.config.system_prompt.clone()
             };
 
-            // In planning mode, only provide read-only tools
-            let tools = if self.planning_mode {
-                ToolRegistry::read_only_declarations()
-            } else {
-                ToolRegistry::declarations()
-            };
+            // Get tool declarations (built-in + MCP)
+            let tools = self.get_tools(self.planning_mode);
             let request = build_request(
                 &system_prompt,
                 self.conversation.clone(),
@@ -188,7 +263,10 @@ impl AgentLoop {
                     continue;
                 }
 
-                let result = ToolRegistry::execute(&call.name, &call.args);
+                // Try MCP tools first, then built-in tools
+                let result = self
+                    .try_execute_mcp(&call.name, &call.args)
+                    .unwrap_or_else(|| ToolRegistry::execute(&call.name, &call.args));
                 on_event(AgentEvent::ToolResult {
                     name: call.name.clone(),
                     result: result.clone(),
@@ -344,6 +422,21 @@ impl AgentLoop {
 
     pub fn config_mut(&mut self) -> &mut Config {
         &mut self.config
+    }
+
+    pub fn mcp_status(&self) -> String {
+        if self.mcp_clients.is_empty() {
+            return "No MCP servers connected".to_string();
+        }
+        let mut status = format!("{} MCP server(s) connected:\n", self.mcp_clients.len());
+        for client in &self.mcp_clients {
+            status.push_str(&format!(
+                "  {} ({} tools)\n",
+                client.name(),
+                client.tools.len()
+            ));
+        }
+        status
     }
 
     pub fn clear_conversation(&mut self) {
