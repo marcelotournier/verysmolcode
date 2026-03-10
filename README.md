@@ -84,6 +84,7 @@ vsc -v
 | `/mcp`       | List configured MCP servers                       |
 | `/mcp-add`   | Add MCP server: `/mcp-add name command [args]`   |
 | `/mcp-rm`    | Remove MCP server: `/mcp-rm name`                |
+| `/retry`     | Retry the last message (alias: `/r`)             |
 | `/version`   | Show version information                          |
 | `/clear`     | Clear conversation and screen                     |
 | `/quit`      | Exit VerySmolCode                                 |
@@ -94,9 +95,10 @@ vsc -v
 |------------|---------------------|
 | `Ctrl+C`   | Cancel/Quit         |
 | `Ctrl+L`   | Clear screen        |
-| `Up/Down`  | Input history       |
+| `Up/Down`  | Input history / Navigate command popup |
 | `PgUp/PgDn`| Scroll output       |
-| `Tab`      | Auto-complete       |
+| `Tab`      | Select from command popup |
+| `Esc`      | Dismiss command popup |
 | `Ctrl+A/E` | Home/End of line    |
 | `Ctrl+U/K` | Clear line before/after cursor |
 | `Ctrl+W`   | Delete word backward |
@@ -168,7 +170,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (226 tests)
+# Unit tests (228 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)
