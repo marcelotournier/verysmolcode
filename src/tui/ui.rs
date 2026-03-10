@@ -1,6 +1,7 @@
 use crate::tui::app::{App, DisplayMessage};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 // Color scheme - comfortable blue tones for tmux
 const BG_COLOR: Color = Color::Rgb(15, 17, 26);
@@ -236,7 +237,9 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let width = area.width as usize;
-    let padding = width.saturating_sub(left.len() + right.len());
+    let left_width = UnicodeWidthStr::width(left.as_str());
+    let right_width = UnicodeWidthStr::width(right.as_str());
+    let padding = width.saturating_sub(left_width + right_width);
     let status = format!("{}{:>pad$}", left, right, pad = padding + right.len());
 
     let bar = Paragraph::new(status).style(
