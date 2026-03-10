@@ -53,8 +53,8 @@ impl TelegramBot {
             return None;
         }
         Some(Self {
-            token: config.bot_token.clone().unwrap(),
-            chat_id: config.chat_id.unwrap(),
+            token: config.bot_token.clone()?,
+            chat_id: config.chat_id?,
             last_update_id: None,
         })
     }
