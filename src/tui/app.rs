@@ -699,6 +699,54 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
                 format!("[cmd] Failed ({}): {}", exit_code, summary)
             }
         }
+        "todo_update" => {
+            let action = result
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("updated");
+            let id = result.get("id").and_then(|v| v.as_u64());
+            match (action, id) {
+                (action, Some(id)) => format!("[todo] #{} {}", id, action),
+                (_, None) => "[todo] Updated".to_string(),
+            }
+        }
+        "find_files" => {
+            let files = result
+                .get("files")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            format!("[find] {} files found", files)
+        }
+        "list_directory" => {
+            let path = result.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+            let entries = result
+                .get("entries")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            format!("[ls] {} ({} entries)", path, entries)
+        }
+        "web_fetch" => {
+            let url = result.get("url").and_then(|v| v.as_str()).unwrap_or("?");
+            let truncated = result
+                .get("truncated")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if truncated {
+                format!("[web] {} (truncated)", url)
+            } else {
+                format!("[web] {}", url)
+            }
+        }
+        "read_image" => {
+            let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            let size = result
+                .get("size_bytes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            format!("[image] {} ({} bytes)", path, size)
+        }
         _ => {
             format!("[{}] Done", name)
         }
@@ -867,5 +915,54 @@ mod tests {
             .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
             .collect();
         assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_summarize_todo_update() {
+        let result = json!({"ok": true, "id": 3, "action": "added"});
+        let summary = summarize_tool_result("todo_update", &result);
+        assert_eq!(summary, "[todo] #3 added");
+    }
+
+    #[test]
+    fn test_summarize_todo_update_no_id() {
+        let result = json!({"tasks": "list of tasks"});
+        let summary = summarize_tool_result("todo_update", &result);
+        assert_eq!(summary, "[todo] Updated");
+    }
+
+    #[test]
+    fn test_summarize_find_files() {
+        let result = json!({"files": ["a.rs", "b.rs", "c.rs"]});
+        let summary = summarize_tool_result("find_files", &result);
+        assert_eq!(summary, "[find] 3 files found");
+    }
+
+    #[test]
+    fn test_summarize_list_directory() {
+        let result = json!({"path": "/src", "entries": [{"name": "main.rs"}, {"name": "lib.rs"}]});
+        let summary = summarize_tool_result("list_directory", &result);
+        assert_eq!(summary, "[ls] /src (2 entries)");
+    }
+
+    #[test]
+    fn test_summarize_web_fetch() {
+        let result = json!({"url": "https://example.com", "content": "Hello"});
+        let summary = summarize_tool_result("web_fetch", &result);
+        assert_eq!(summary, "[web] https://example.com");
+    }
+
+    #[test]
+    fn test_summarize_web_fetch_truncated() {
+        let result = json!({"url": "https://big.com", "truncated": true});
+        let summary = summarize_tool_result("web_fetch", &result);
+        assert!(summary.contains("truncated"));
+    }
+
+    #[test]
+    fn test_summarize_read_image() {
+        let result = json!({"path": "/img/photo.png", "size_bytes": 1024});
+        let summary = summarize_tool_result("read_image", &result);
+        assert_eq!(summary, "[image] /img/photo.png (1024 bytes)");
     }
 }
