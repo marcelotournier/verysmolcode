@@ -727,36 +727,56 @@ impl AgentLoop {
         let dropped_start = 1;
         let dropped_end = self.conversation.len() - keep_end;
         let mut topics = Vec::with_capacity(5);
-        'outer: for msg in &self.conversation[dropped_start..dropped_end] {
+        let mut files_touched = Vec::with_capacity(10);
+
+        for msg in &self.conversation[dropped_start..dropped_end] {
             for part in &msg.parts {
-                if let Part::Text { text } = part {
-                    // Extract first line as topic hint (max 80 chars)
-                    let first_line = text.lines().next().unwrap_or("").trim();
-                    if !first_line.is_empty() && first_line.len() > 5 {
-                        let topic = safe_truncate(first_line, 80);
-                        topics.push(topic.to_string());
-                        if topics.len() >= 5 {
-                            break 'outer;
+                match part {
+                    Part::Text { text } => {
+                        if topics.len() < 5 {
+                            let first_line = text.lines().next().unwrap_or("").trim();
+                            if !first_line.is_empty() && first_line.len() > 5 {
+                                let topic = safe_truncate(first_line, 80);
+                                topics.push(topic.to_string());
+                            }
                         }
                     }
+                    Part::FunctionCall { function_call } => {
+                        // Track files that were read/written/edited
+                        if files_touched.len() < 15 {
+                            if let Some(path) =
+                                function_call.args.get("path").and_then(|v| v.as_str())
+                            {
+                                let short = path.strip_prefix("./").unwrap_or(path);
+                                if !files_touched.contains(&short.to_string()) {
+                                    files_touched.push(short.to_string());
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
 
-        let summary_text = if topics.is_empty() {
-            "[Previous conversation compacted. Continue from the recent context below.]".to_string()
-        } else {
+        let mut summary_parts = Vec::new();
+        summary_parts.push("[Previous conversation compacted.".to_string());
+
+        if !topics.is_empty() {
             let topic_list: String = topics
                 .iter()
-                .take(5) // Max 5 topic hints
                 .map(|t| format!("- {}", t))
                 .collect::<Vec<_>>()
                 .join("\n");
-            format!(
-                "[Previous conversation compacted. Topics discussed:\n{}\nContinue from the recent context below.]",
-                topic_list
-            )
-        };
+            summary_parts.push(format!("Topics discussed:\n{}", topic_list));
+        }
+
+        if !files_touched.is_empty() {
+            summary_parts.push(format!("Files involved: {}", files_touched.join(", ")));
+        }
+
+        summary_parts.push("Continue from the recent context below.]".to_string());
+        let summary_text = summary_parts.join("\n");
 
         let summary = Content {
             role: Some("user".to_string()),
