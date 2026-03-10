@@ -197,51 +197,37 @@ impl AgentLoop {
                 self.config.system_prompt.clone()
             };
 
-            // Get tool declarations (built-in + MCP)
-            let tools = self.get_tools(self.planning_mode);
-            let request = build_request(
-                &system_prompt,
-                self.conversation.clone(),
-                Some(tools),
-                model,
-                self.config.temperature,
-                self.config.max_tokens_per_response,
-            );
-
-            // Make API call with automatic fallback on rate limit/overload
+            // Make API call with automatic fallback chain on rate limit/overload
             on_event(AgentEvent::Status("Thinking...".to_string()));
-            let response = match self.client.generate(model, &request) {
-                Ok(resp) => resp,
-                Err(e)
-                    if e.contains("429")
-                        || e.contains("rate")
-                        || e.contains("quota")
-                        || e.contains("503")
-                        || e.contains("high demand") =>
-                {
-                    // Try fallback model
-                    if let Some(fb) = self.client.router.fallback_for(model) {
-                        on_event(AgentEvent::Status(format!(
-                            "{} unavailable, falling back to {}",
-                            model.display_name(),
-                            fb.display_name()
-                        )));
-                        on_event(AgentEvent::ModelSwitch(fb.display_name().to_string()));
-                        // Rebuild request with fallback model's thinking config
-                        let fb_request = build_request(
-                            &system_prompt,
-                            self.conversation.clone(),
-                            Some(self.get_tools(self.planning_mode)),
-                            fb,
-                            self.config.temperature,
-                            self.config.max_tokens_per_response,
-                        );
-                        self.client.generate(fb, &fb_request)?
-                    } else {
-                        return Err(e);
+            let response = {
+                let mut current_model = model;
+                loop {
+                    let req = build_request(
+                        &system_prompt,
+                        self.conversation.clone(),
+                        Some(self.get_tools(self.planning_mode)),
+                        current_model,
+                        self.config.temperature,
+                        self.config.max_tokens_per_response,
+                    );
+                    match self.client.generate(current_model, &req) {
+                        Ok(resp) => break resp,
+                        Err(e) if is_rate_limit_error(&e) => {
+                            if let Some(fb) = self.client.router.fallback_for(current_model) {
+                                on_event(AgentEvent::Status(format!(
+                                    "{} unavailable, trying {}...",
+                                    current_model.display_name(),
+                                    fb.display_name()
+                                )));
+                                on_event(AgentEvent::ModelSwitch(fb.display_name().to_string()));
+                                current_model = fb;
+                            } else {
+                                return Err(e);
+                            }
+                        }
+                        Err(e) => return Err(e),
                     }
                 }
-                Err(e) => return Err(e),
             };
 
             // Track tokens
@@ -528,6 +514,15 @@ pub enum AgentEvent {
         thinking: u32,
     },
     Status(String),
+}
+
+/// Check if an error indicates rate limiting or overload
+fn is_rate_limit_error(e: &str) -> bool {
+    e.contains("429")
+        || e.contains("rate")
+        || e.contains("quota")
+        || e.contains("503")
+        || e.contains("high demand")
 }
 
 /// Check if a tool call looks dangerous

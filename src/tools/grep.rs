@@ -1,8 +1,10 @@
+use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Search for a pattern in files
+/// Search for a pattern in files (parallelized with rayon)
 pub fn grep_search(args: &Value) -> Value {
     let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -21,38 +23,60 @@ pub fn grep_search(args: &Value) -> Value {
         std::env::current_dir().unwrap_or_default().join(path)
     };
 
-    let mut results: Vec<Value> = Vec::new();
-    search_recursive(&search_path, pattern, include, max_results, &mut results);
+    // Phase 1: Collect all searchable files (fast, sequential dir walk)
+    let mut files = Vec::new();
+    collect_files(&search_path, include, &mut files);
+
+    // Phase 2: Search files in parallel with rayon
+    let count = AtomicUsize::new(0);
+    let results: Vec<Value> = files
+        .par_iter()
+        .flat_map(|file_path| {
+            if count.load(Ordering::Relaxed) >= max_results {
+                return Vec::new();
+            }
+
+            let pattern_lower = pattern.to_lowercase();
+            let mut matches = Vec::new();
+
+            if let Ok(content) = fs::read_to_string(file_path) {
+                for (line_num, line) in content.lines().enumerate() {
+                    if count.load(Ordering::Relaxed) >= max_results {
+                        break;
+                    }
+                    if line.to_lowercase().contains(&pattern_lower) {
+                        count.fetch_add(1, Ordering::Relaxed);
+                        matches.push(json!({
+                            "file": file_path.display().to_string(),
+                            "line": line_num + 1,
+                            "content": line.trim()
+                        }));
+                    }
+                }
+            }
+            matches
+        })
+        .collect();
+
+    // Trim to max_results (rayon may slightly overshoot due to parallelism)
+    let trimmed: Vec<Value> = results.into_iter().take(max_results).collect();
 
     json!({
         "pattern": pattern,
         "path": search_path.display().to_string(),
-        "matches": results,
-        "total_matches": results.len()
+        "matches": trimmed,
+        "total_matches": trimmed.len()
     })
 }
 
-fn search_recursive(
-    dir: &Path,
-    pattern: &str,
-    include: Option<&str>,
-    max_results: usize,
-    results: &mut Vec<Value>,
-) {
-    if results.len() >= max_results {
-        return;
-    }
-
+/// Collect all searchable files from a directory tree
+fn collect_files(dir: &Path, include: Option<&str>, files: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
     };
 
     for entry in entries.flatten() {
-        if results.len() >= max_results {
-            return;
-        }
-
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
 
@@ -68,7 +92,7 @@ fn search_recursive(
         }
 
         if path.is_dir() {
-            search_recursive(&path, pattern, include, max_results, results);
+            collect_files(&path, include, files);
         } else if path.is_file() {
             // Check include pattern (simple glob)
             if let Some(inc) = include {
@@ -78,25 +102,9 @@ fn search_recursive(
                 }
             }
 
-            // Skip binary files (check first bytes)
-            if is_likely_binary(&path) {
-                continue;
-            }
-
-            if let Ok(content) = fs::read_to_string(&path) {
-                let pattern_lower = pattern.to_lowercase();
-                for (line_num, line) in content.lines().enumerate() {
-                    if results.len() >= max_results {
-                        return;
-                    }
-                    if line.to_lowercase().contains(&pattern_lower) {
-                        results.push(json!({
-                            "file": path.display().to_string(),
-                            "line": line_num + 1,
-                            "content": line.trim()
-                        }));
-                    }
-                }
+            // Skip binary files
+            if !is_likely_binary(&path) {
+                files.push(path);
             }
         }
     }
@@ -124,7 +132,7 @@ fn is_likely_binary(path: &Path) -> bool {
     false
 }
 
-/// Find files matching a glob pattern
+/// Find files matching a glob pattern (parallelized with rayon)
 pub fn find_files(args: &Value) -> Value {
     let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -142,8 +150,24 @@ pub fn find_files(args: &Value) -> Value {
         std::env::current_dir().unwrap_or_default().join(path)
     };
 
-    let mut results: Vec<String> = Vec::new();
-    find_recursive(&search_path, pattern, max_results, &mut results);
+    // Phase 1: Collect all files
+    let mut all_files = Vec::new();
+    collect_all_files(&search_path, &mut all_files);
+
+    // Phase 2: Filter in parallel
+    let pat = pattern.trim_start_matches('*');
+    let results: Vec<String> = all_files
+        .par_iter()
+        .filter_map(|path| {
+            let name = path.file_name()?.to_string_lossy();
+            if name.contains(pat) || name.ends_with(pat) {
+                Some(path.display().to_string())
+            } else {
+                None
+            }
+        })
+        .take_any(max_results)
+        .collect();
 
     json!({
         "pattern": pattern,
@@ -152,21 +176,13 @@ pub fn find_files(args: &Value) -> Value {
     })
 }
 
-fn find_recursive(dir: &Path, pattern: &str, max: usize, results: &mut Vec<String>) {
-    if results.len() >= max {
-        return;
-    }
-
+fn collect_all_files(dir: &Path, files: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
     };
 
     for entry in entries.flatten() {
-        if results.len() >= max {
-            return;
-        }
-
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
 
@@ -175,13 +191,9 @@ fn find_recursive(dir: &Path, pattern: &str, max: usize, results: &mut Vec<Strin
         }
 
         if path.is_dir() {
-            find_recursive(&path, pattern, max, results);
+            collect_all_files(&path, files);
         } else {
-            // Simple glob matching
-            let pat = pattern.trim_start_matches('*');
-            if name.contains(pat) || name.ends_with(pat) {
-                results.push(path.display().to_string());
-            }
+            files.push(path);
         }
     }
 }
