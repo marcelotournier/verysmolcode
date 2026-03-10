@@ -768,9 +768,250 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
 }
 
 #[cfg(test)]
+impl App {
+    /// Create an App without starting the agent (for unit tests)
+    fn test_new() -> Self {
+        Self {
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll_offset: 0,
+            should_quit: false,
+            is_processing: false,
+            status_line: String::new(),
+            model_name: "Ready".to_string(),
+            rate_status: String::new(),
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_thinking_tokens: 0,
+            conversation_tokens: 0,
+            agent_tx: None,
+            event_rx: None,
+            done_rx: None,
+            input_history: Vec::new(),
+            history_index: None,
+            planning_mode: false,
+            command_suggestions: Vec::new(),
+            suggestion_index: None,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // -- App method tests --
+
+    #[test]
+    fn test_scroll_up() {
+        let mut app = App::test_new();
+        assert_eq!(app.scroll_offset, 0);
+        app.scroll_up();
+        assert_eq!(app.scroll_offset, 3);
+        app.scroll_up();
+        assert_eq!(app.scroll_offset, 6);
+    }
+
+    #[test]
+    fn test_scroll_down() {
+        let mut app = App::test_new();
+        app.scroll_offset = 5;
+        app.scroll_down();
+        assert_eq!(app.scroll_offset, 2);
+        app.scroll_down();
+        assert_eq!(app.scroll_offset, 0);
+        // Should not underflow
+        app.scroll_down();
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_clear_screen() {
+        let mut app = App::test_new();
+        app.messages.push(DisplayMessage::User("hello".to_string()));
+        app.messages
+            .push(DisplayMessage::Assistant("hi".to_string()));
+        app.scroll_offset = 10;
+        app.clear_screen();
+        assert!(app.messages.is_empty());
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_cancel_processing() {
+        let mut app = App::test_new();
+        app.is_processing = true;
+        app.model_name = "Gemini 3 Flash".to_string();
+        app.cancel_processing();
+        assert!(!app.is_processing);
+        assert_eq!(app.model_name, "Ready");
+        assert!(matches!(
+            app.messages.last(),
+            Some(DisplayMessage::Status(_))
+        ));
+    }
+
+    #[test]
+    fn test_history_up_empty() {
+        let mut app = App::test_new();
+        app.history_up();
+        assert!(app.history_index.is_none());
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn test_history_up_single() {
+        let mut app = App::test_new();
+        app.input_history.push("first".to_string());
+        app.history_up();
+        assert_eq!(app.history_index, Some(0));
+        assert_eq!(app.input, "first");
+        assert_eq!(app.cursor_pos, 5);
+    }
+
+    #[test]
+    fn test_history_up_multiple() {
+        let mut app = App::test_new();
+        app.input_history.push("first".to_string());
+        app.input_history.push("second".to_string());
+        app.input_history.push("third".to_string());
+
+        app.history_up(); // Should go to last (index 2)
+        assert_eq!(app.input, "third");
+        app.history_up(); // index 1
+        assert_eq!(app.input, "second");
+        app.history_up(); // index 0
+        assert_eq!(app.input, "first");
+        app.history_up(); // saturates at 0
+        assert_eq!(app.input, "first");
+    }
+
+    #[test]
+    fn test_history_down_no_history() {
+        let mut app = App::test_new();
+        app.history_down();
+        assert!(app.history_index.is_none());
+    }
+
+    #[test]
+    fn test_history_down_clears_input() {
+        let mut app = App::test_new();
+        app.input_history.push("first".to_string());
+        app.input_history.push("second".to_string());
+
+        app.history_up(); // "second"
+        app.history_down(); // past end → clears input
+        assert!(app.history_index.is_none());
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_history_up_down_cycle() {
+        let mut app = App::test_new();
+        app.input_history.push("a".to_string());
+        app.input_history.push("b".to_string());
+
+        app.history_up(); // "b"
+        assert_eq!(app.input, "b");
+        app.history_up(); // "a"
+        assert_eq!(app.input, "a");
+        app.history_down(); // "b"
+        assert_eq!(app.input, "b");
+        app.history_down(); // clears
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn test_update_suggestions_slash() {
+        let mut app = App::test_new();
+        app.input = "/h".to_string();
+        app.update_suggestions();
+        assert_eq!(app.command_suggestions.len(), 1);
+        assert_eq!(app.command_suggestions[0].0, "/help");
+    }
+
+    #[test]
+    fn test_update_suggestions_clears_on_non_slash() {
+        let mut app = App::test_new();
+        app.input = "/h".to_string();
+        app.update_suggestions();
+        assert!(!app.command_suggestions.is_empty());
+
+        app.input = "hello".to_string();
+        app.update_suggestions();
+        assert!(app.command_suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_update_suggestions_clears_on_space() {
+        let mut app = App::test_new();
+        app.input = "/help something".to_string();
+        app.update_suggestions();
+        assert!(app.command_suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_select_suggestion_empty() {
+        let mut app = App::test_new();
+        assert!(!app.select_suggestion());
+    }
+
+    #[test]
+    fn test_select_suggestion_picks_first() {
+        let mut app = App::test_new();
+        app.input = "/h".to_string();
+        app.update_suggestions();
+        assert!(app.select_suggestion());
+        assert_eq!(app.input, "/help");
+        assert_eq!(app.cursor_pos, 5);
+        assert!(app.command_suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_select_suggestion_picks_selected() {
+        let mut app = App::test_new();
+        app.input = "/mc".to_string();
+        app.update_suggestions();
+        assert!(app.command_suggestions.len() >= 2);
+        app.suggestion_index = Some(1);
+        let expected = app.command_suggestions[1].0.clone();
+        assert!(app.select_suggestion());
+        assert_eq!(app.input, expected);
+    }
+
+    #[test]
+    fn test_last_user_message() {
+        let mut app = App::test_new();
+        app.input_history.push("/help".to_string());
+        app.input_history.push("fix the bug".to_string());
+        app.input_history.push("/status".to_string());
+        assert_eq!(app.last_user_message(), Some("fix the bug".to_string()));
+    }
+
+    #[test]
+    fn test_last_user_message_none() {
+        let mut app = App::test_new();
+        app.input_history.push("/help".to_string());
+        app.input_history.push("/status".to_string());
+        assert_eq!(app.last_user_message(), None);
+    }
+
+    #[test]
+    fn test_token_summary() {
+        let mut app = App::test_new();
+        app.total_input_tokens = 1000;
+        app.total_output_tokens = 500;
+        app.total_thinking_tokens = 200;
+        app.conversation_tokens = 3000;
+        let summary = app.token_summary();
+        assert!(summary.contains("1000"));
+        assert!(summary.contains("500"));
+    }
+
+    // -- summarize_tool_result tests --
 
     #[test]
     fn test_summarize_read_file() {

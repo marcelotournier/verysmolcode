@@ -195,7 +195,13 @@
 - [x] Shared utils module: safe_truncate() extracted from 4 duplicate implementations
 - [x] DRYed run_shell() truncation to use shared safe_truncate() helper
 - [x] 6 tests for utils::safe_truncate + 5 tests for git::safe_truncate edge cases
-- [x] 385 unit tests
+
+## Completed (v0.9.9)
+- [x] App unit tests: 21 new tests for TUI App methods (scroll, history, suggestions, clear, cancel)
+- [x] Test helper: App::test_new() constructor for unit testing without API key
+- [x] Coverage: scroll_up/down, clear_screen, cancel_processing, history_up/down cycles
+- [x] Coverage: update_suggestions, select_suggestion, last_user_message, token_summary
+- [x] 407 unit tests
 
 # Lessons Learned
 
