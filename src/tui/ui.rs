@@ -1,7 +1,18 @@
 use crate::tui::app::{App, DisplayMessage};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use std::sync::Mutex;
 use unicode_width::UnicodeWidthStr;
+
+/// Cache for rendered message lines to avoid re-rendering markdown on every frame.
+/// Only re-renders when message count or terminal width changes.
+struct RenderCache {
+    lines: Vec<Line<'static>>,
+    msg_count: usize,
+    width: u16,
+}
+
+static RENDER_CACHE: Mutex<Option<RenderCache>> = Mutex::new(None);
 
 // Color scheme - comfortable blue tones for tmux
 const BG_COLOR: Color = Color::Rgb(15, 17, 26);
@@ -116,80 +127,28 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    // Build text lines from messages
-    let mut lines: Vec<Line> = Vec::new();
     let width = inner.width as usize;
 
-    for msg in &app.messages {
-        match msg {
-            DisplayMessage::User(text) => {
-                lines.push(Line::from(vec![
-                    Span::styled("\u{1F464} ", Style::default().fg(USER_COLOR).bold()),
-                    Span::styled(text.as_str(), Style::default().fg(USER_COLOR)),
-                ]));
-            }
-            DisplayMessage::Assistant(text) => {
-                // Render with basic markdown styling
-                let md_lines = render_markdown(text, width.saturating_sub(2));
-                for (i, line) in md_lines.iter().enumerate() {
-                    if i == 0 {
-                        let mut spans = vec![Span::styled(
-                            "\u{1FAD0} ",
-                            Style::default().fg(ASSISTANT_COLOR),
-                        )];
-                        spans.extend(line.spans.iter().cloned());
-                        lines.push(Line::from(spans));
-                    } else {
-                        let mut spans = vec![Span::raw("  ")];
-                        spans.extend(line.spans.iter().cloned());
-                        lines.push(Line::from(spans));
-                    }
-                }
-            }
-            DisplayMessage::ToolCall(text) => {
-                lines.push(Line::from(vec![
-                    Span::styled("  \u{1F529} ", Style::default().fg(TOOL_COLOR)),
-                    Span::styled(text.as_str(), Style::default().fg(TOOL_COLOR)),
-                ]));
-            }
-            DisplayMessage::ToolResult(text) => {
-                let wrapped = wrap_text(text, width.saturating_sub(6));
-                for (i, line) in wrapped.iter().enumerate() {
-                    if i == 0 {
-                        lines.push(Line::from(vec![
-                            Span::styled("  \u{2705} ", Style::default().fg(TOOL_RESULT_COLOR)),
-                            Span::styled(line.clone(), Style::default().fg(TOOL_RESULT_COLOR)),
-                        ]));
-                    } else {
-                        lines.push(Line::from(Span::styled(
-                            format!("      {}", line),
-                            Style::default().fg(TOOL_RESULT_COLOR),
-                        )));
-                    }
-                }
-            }
-            DisplayMessage::Status(text) => {
-                lines.push(Line::from(Span::styled(
-                    format!("  \u{1F4AC} {}", text),
-                    Style::default().fg(STATUS_COLOR).italic(),
-                )));
-            }
-            DisplayMessage::Error(text) => {
-                lines.push(Line::from(Span::styled(
-                    format!("\u{26A0}\u{FE0F}  {}", text),
-                    Style::default().fg(ERROR_COLOR).bold(),
-                )));
-            }
-            DisplayMessage::ModelInfo(text) => {
-                lines.push(Line::from(Span::styled(
-                    text.as_str(),
-                    Style::default().fg(ACCENT_COLOR),
-                )));
-            }
+    // Use cached lines if message count and width haven't changed
+    let lines = {
+        let mut cache = RENDER_CACHE.lock().unwrap();
+        let needs_rebuild = match cache.as_ref() {
+            Some(c) => c.msg_count != app.messages.len() || c.width != inner.width,
+            None => true,
+        };
+
+        if needs_rebuild {
+            let rendered = build_message_lines(&app.messages, width);
+            *cache = Some(RenderCache {
+                lines: rendered.clone(),
+                msg_count: app.messages.len(),
+                width: inner.width,
+            });
+            rendered
+        } else {
+            cache.as_ref().unwrap().lines.clone()
         }
-        // Add spacing between messages
-        lines.push(Line::from(""));
-    }
+    };
 
     // Calculate scroll
     let total_lines = lines.len() as u16;
@@ -221,6 +180,88 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
             );
         }
     }
+}
+
+/// Build all rendered lines from messages (expensive, cached)
+fn build_message_lines(messages: &[DisplayMessage], width: usize) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    for msg in messages {
+        match msg {
+            DisplayMessage::User(text) => {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "\u{1F464} ".to_string(),
+                        Style::default().fg(USER_COLOR).bold(),
+                    ),
+                    Span::styled(text.clone(), Style::default().fg(USER_COLOR)),
+                ]));
+            }
+            DisplayMessage::Assistant(text) => {
+                let md_lines = render_markdown(text, width.saturating_sub(2));
+                for (i, line) in md_lines.iter().enumerate() {
+                    if i == 0 {
+                        let mut spans = vec![Span::styled(
+                            "\u{1FAD0} ".to_string(),
+                            Style::default().fg(ASSISTANT_COLOR),
+                        )];
+                        spans.extend(line.spans.iter().cloned());
+                        lines.push(Line::from(spans));
+                    } else {
+                        let mut spans = vec![Span::raw("  ".to_string())];
+                        spans.extend(line.spans.iter().cloned());
+                        lines.push(Line::from(spans));
+                    }
+                }
+            }
+            DisplayMessage::ToolCall(text) => {
+                lines.push(Line::from(vec![
+                    Span::styled("  \u{1F529} ".to_string(), Style::default().fg(TOOL_COLOR)),
+                    Span::styled(text.clone(), Style::default().fg(TOOL_COLOR)),
+                ]));
+            }
+            DisplayMessage::ToolResult(text) => {
+                let wrapped = wrap_text(text, width.saturating_sub(6));
+                for (i, line) in wrapped.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                "  \u{2705} ".to_string(),
+                                Style::default().fg(TOOL_RESULT_COLOR),
+                            ),
+                            Span::styled(line.clone(), Style::default().fg(TOOL_RESULT_COLOR)),
+                        ]));
+                    } else {
+                        lines.push(Line::from(Span::styled(
+                            format!("      {}", line),
+                            Style::default().fg(TOOL_RESULT_COLOR),
+                        )));
+                    }
+                }
+            }
+            DisplayMessage::Status(text) => {
+                lines.push(Line::from(Span::styled(
+                    format!("  \u{1F4AC} {}", text),
+                    Style::default().fg(STATUS_COLOR).italic(),
+                )));
+            }
+            DisplayMessage::Error(text) => {
+                lines.push(Line::from(Span::styled(
+                    format!("\u{26A0}\u{FE0F}  {}", text),
+                    Style::default().fg(ERROR_COLOR).bold(),
+                )));
+            }
+            DisplayMessage::ModelInfo(text) => {
+                lines.push(Line::from(Span::styled(
+                    text.clone(),
+                    Style::default().fg(ACCENT_COLOR),
+                )));
+            }
+        }
+        lines.push(Line::from("".to_string()));
+    }
+
+    lines
 }
 
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
@@ -387,7 +428,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let right = if total_tokens > 0 {
         // Show context bar: [||||      ] 12.5K/24K
         let threshold = app.conversation_tokens.max(1) as f64;
-        let auto_compact = crate::config::Config::load().auto_compact_threshold;
+        let auto_compact = app.auto_compact_threshold;
         let ratio = (app.conversation_tokens as f64) / (auto_compact as f64);
         let bar_width = 8;
         let filled = ((ratio * bar_width as f64).round() as usize).min(bar_width);

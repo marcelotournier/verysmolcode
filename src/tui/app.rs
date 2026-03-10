@@ -63,6 +63,9 @@ pub struct App {
     pub todo_visible: bool,
     pub todo_summary: String, // One-line for status bar
     pub todo_display: String, // Full display for popup
+
+    // Cached config value (avoids disk read every frame)
+    pub auto_compact_threshold: u32,
 }
 
 impl App {
@@ -100,6 +103,7 @@ impl App {
             todo_visible: false,
             todo_summary: String::new(),
             todo_display: String::new(),
+            auto_compact_threshold: crate::config::Config::load().auto_compact_threshold,
         };
 
         // Welcome message (rendered as styled widget in ui.rs when messages are empty)
@@ -1281,6 +1285,7 @@ impl App {
             todo_visible: false,
             todo_summary: String::new(),
             todo_display: String::new(),
+            auto_compact_threshold: 24000,
         }
     }
 }
