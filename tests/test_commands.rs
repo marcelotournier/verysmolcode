@@ -328,3 +328,114 @@ fn test_todo_command() {
         verysmolcode::tui::app::CommandResponse::ShowTodo
     ));
 }
+
+// -- Config clamping tests --
+
+#[test]
+fn test_config_set_temp_alias() {
+    let msg = get_message("/config set temp 0.8");
+    assert!(msg.contains("Temperature set to"));
+}
+
+#[test]
+fn test_config_set_temperature_clamp_high() {
+    let msg = get_message("/config set temperature 5.0");
+    assert!(msg.contains("Temperature set to 2"));
+}
+
+#[test]
+fn test_config_set_temperature_clamp_low() {
+    let msg = get_message("/config set temperature -1.0");
+    assert!(msg.contains("Temperature set to 0"));
+}
+
+#[test]
+fn test_config_set_max_tokens_clamp_low() {
+    let msg = get_message("/config set max_tokens 10");
+    assert!(msg.contains("Max tokens/response set to 256"));
+}
+
+#[test]
+fn test_config_set_max_tokens_clamp_high() {
+    let msg = get_message("/config set max_tokens 999999");
+    assert!(msg.contains("Max tokens/response set to 65536"));
+}
+
+#[test]
+fn test_config_set_compact_threshold_clamp_low() {
+    let msg = get_message("/config set compact_threshold 100");
+    assert!(msg.contains("Auto-compact threshold set to 4000"));
+}
+
+#[test]
+fn test_config_set_compact_threshold_clamp_high() {
+    let msg = get_message("/config set compact_threshold 999999");
+    assert!(msg.contains("Auto-compact threshold set to 128000"));
+}
+
+#[test]
+fn test_config_set_compact_threshold_invalid() {
+    let msg = get_message("/config set compact_threshold abc");
+    assert!(msg.contains("Error"));
+}
+
+// -- Safety alias tests --
+
+#[test]
+fn test_config_set_safety_true() {
+    let msg = get_message("/config set safety true");
+    assert!(msg.contains("Safety checks enabled"));
+}
+
+#[test]
+fn test_config_set_safety_false() {
+    let msg = get_message("/config set safety false");
+    assert!(msg.contains("Safety checks disabled"));
+    let _ = get_message("/config set safety on");
+}
+
+#[test]
+fn test_config_set_safety_enabled() {
+    let msg = get_message("/config set safety enabled");
+    assert!(msg.contains("Safety checks enabled"));
+}
+
+#[test]
+fn test_config_set_safety_disabled() {
+    let msg = get_message("/config set safety disabled");
+    assert!(msg.contains("Safety checks disabled"));
+    let _ = get_message("/config set safety on");
+}
+
+// -- MCP add/rm success tests --
+
+#[test]
+fn test_mcp_add_success() {
+    let msg = get_message("/mcp-add test_srv_add echo hello world");
+    assert!(msg.contains("added"));
+    // Clean up
+    let _ = get_message("/mcp-rm test_srv_add");
+}
+
+#[test]
+fn test_mcp_add_no_extra_args() {
+    let msg = get_message("/mcp-add test_srv_noargs echo");
+    assert!(msg.contains("added"));
+    let _ = get_message("/mcp-rm test_srv_noargs");
+}
+
+#[test]
+fn test_mcp_rm_success() {
+    // Add first, then remove
+    let _ = get_message("/mcp-add test_srv_rm echo hi");
+    let msg = get_message("/mcp-rm test_srv_rm");
+    assert!(msg.contains("removed"));
+}
+
+#[test]
+fn test_mcp_list_with_server() {
+    let _ = get_message("/mcp-add test_srv_list echo hi");
+    let msg = get_message("/mcp");
+    assert!(msg.contains("test_srv_list"));
+    let _ = get_message("/mcp-rm test_srv_list");
+}
