@@ -91,8 +91,11 @@ fn test_version_command() {
 
 #[test]
 fn test_compact_command() {
-    let msg = get_message("/compact");
-    assert!(msg.contains("compacted"));
+    let response = handle_command("/compact");
+    assert!(matches!(
+        response,
+        verysmolcode::tui::app::CommandResponse::Compact
+    ));
 }
 
 #[test]

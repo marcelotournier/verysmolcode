@@ -135,6 +135,11 @@ impl App {
                     let _ = done_tx.send(());
                     continue;
                 }
+                if user_input == "/_compact" {
+                    agent.compact_now();
+                    let _ = done_tx.send(());
+                    continue;
+                }
                 if user_input == "/_undo" {
                     match agent.undo() {
                         Ok(paths) => {
@@ -270,6 +275,14 @@ impl App {
                         let _ = tx.send("/_undo".to_string());
                     }
                     self.is_processing = true;
+                }
+                CommandResponse::Compact => {
+                    if let Some(tx) = &self.agent_tx {
+                        let _ = tx.send("/_compact".to_string());
+                    }
+                    self.messages.push(DisplayMessage::Status(
+                        "Conversation compacted to save tokens.".to_string(),
+                    ));
                 }
                 CommandResponse::Retry => {
                     // Resend the last non-command message
@@ -599,6 +612,7 @@ pub enum CommandResponse {
     Undo,
     Save(Option<String>), // Optional filename
     Retry,
+    Compact,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -795,6 +809,7 @@ mod tests {
         let _save = CommandResponse::Save(None);
         let _save_file = CommandResponse::Save(Some("test.md".to_string()));
         let _retry = CommandResponse::Retry;
+        let _compact = CommandResponse::Compact;
     }
 
     #[test]

@@ -170,7 +170,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
                 CommandResponse::Message(msg)
             }
         }
-        "/compact" => CommandResponse::Message("Conversation compacted.".to_string()),
+        "/compact" => CommandResponse::Compact,
         "/model" => {
             let msg = "Available models (Gemini Free Tier):\n\n\
                        Gemini 3.1 Pro        - 5 RPM,  25 RPD  (complex tasks)\n\

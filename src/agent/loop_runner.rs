@@ -724,6 +724,11 @@ impl AgentLoop {
         status
     }
 
+    /// Manually compact the conversation (called by /compact command)
+    pub fn compact_now(&mut self) {
+        self.compact_conversation();
+    }
+
     pub fn clear_conversation(&mut self) {
         self.conversation.clear();
         self.total_conversation_tokens = 0;
