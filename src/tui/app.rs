@@ -33,6 +33,7 @@ pub struct App {
     // Input history
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
+    pub planning_mode: bool,
 }
 
 impl App {
@@ -52,6 +53,7 @@ impl App {
             done_rx: None,
             input_history: Vec::new(),
             history_index: None,
+            planning_mode: false,
         };
 
         // Welcome message
@@ -87,6 +89,23 @@ impl App {
             };
 
             while let Ok(user_input) = input_rx.recv() {
+                // Handle internal commands
+                if user_input == "/clear" {
+                    agent.clear_conversation();
+                    let _ = done_tx.send(());
+                    continue;
+                }
+                if user_input == "/plan_on" {
+                    agent.set_planning_mode(true);
+                    let _ = done_tx.send(());
+                    continue;
+                }
+                if user_input == "/plan_off" {
+                    agent.set_planning_mode(false);
+                    let _ = done_tx.send(());
+                    continue;
+                }
+
                 let event_tx_clone = event_tx.clone();
                 let result = agent.process_message(&user_input, move |event| {
                     let _ = event_tx_clone.send(event);
@@ -134,6 +153,25 @@ impl App {
                     self.messages.clear();
                     if let Some(tx) = &self.agent_tx {
                         let _ = tx.send("/clear".to_string());
+                    }
+                }
+                CommandResponse::TogglePlan => {
+                    self.planning_mode = !self.planning_mode;
+                    let status = if self.planning_mode {
+                        "Planning mode ON - Pro models prioritized, read-only tools"
+                    } else {
+                        "Planning mode OFF - normal operation resumed"
+                    };
+                    self.messages
+                        .push(DisplayMessage::Status(status.to_string()));
+                    // Notify agent thread
+                    if let Some(tx) = &self.agent_tx {
+                        let cmd = if self.planning_mode {
+                            "/plan_on"
+                        } else {
+                            "/plan_off"
+                        };
+                        let _ = tx.send(cmd.to_string());
                     }
                 }
                 CommandResponse::SendToAgent(msg) => {
@@ -306,6 +344,7 @@ pub enum CommandResponse {
     Quit,
     Clear,
     SendToAgent(String),
+    TogglePlan,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {

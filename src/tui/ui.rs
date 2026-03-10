@@ -36,10 +36,11 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
+    let mode = if app.planning_mode { " [PLAN] " } else { "" };
     let title = if app.is_processing {
-        format!(" VerySmolCode  [{}] ", app.model_name)
+        format!(" VerySmolCode{}  [{}] ", mode, app.model_name)
     } else {
-        " VerySmolCode ".to_string()
+        format!(" VerySmolCode{} ", mode)
     };
 
     let header = Block::default()

@@ -4,6 +4,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/help", "Show available commands"),
     ("/clear", "Clear conversation and screen"),
     ("/quit", "Exit VerySmolCode"),
+    ("/plan", "Toggle planning mode (read-only, uses Pro model)"),
     ("/status", "Show rate limits and token usage"),
     ("/config", "Show current configuration"),
     ("/compact", "Manually compact conversation to save tokens"),
@@ -32,6 +33,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
         }
         "/quit" | "/q" | "/exit" => CommandResponse::Quit,
         "/clear" => CommandResponse::Clear,
+        "/plan" => CommandResponse::TogglePlan,
         "/status" => CommandResponse::SendToAgent(
             "Show me the current rate limit status and token usage.".to_string(),
         ),

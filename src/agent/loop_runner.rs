@@ -19,7 +19,33 @@ pub struct AgentLoop {
     config: Config,
     conversation: Vec<Content>,
     total_conversation_tokens: u32,
+    planning_mode: bool,
 }
+
+const PLANNING_SYSTEM_PROMPT: &str = r#"You are in PLANNING MODE. Your job is to analyze the task and create a detailed, step-by-step implementation plan.
+
+Rules for planning mode:
+1. First, understand the codebase by reading relevant files
+2. Break the task into clear, numbered steps
+3. Identify files that need to be created or modified
+4. Consider edge cases and potential issues
+5. Estimate complexity of each step
+6. DO NOT make any changes - only read files and create a plan
+7. Output a structured plan with clear sections
+
+Format your plan as:
+## Analysis
+[Brief analysis of the task]
+
+## Steps
+1. [Step description] - [files involved]
+2. ...
+
+## Risks
+- [Potential issues to watch for]
+
+## Estimated Complexity
+[Low/Medium/High] - [brief justification]"#;
 
 impl AgentLoop {
     pub fn new() -> Result<Self, String> {
@@ -28,7 +54,16 @@ impl AgentLoop {
             config: Config::load(),
             conversation: Vec::new(),
             total_conversation_tokens: 0,
+            planning_mode: false,
         })
+    }
+
+    pub fn set_planning_mode(&mut self, enabled: bool) {
+        self.planning_mode = enabled;
+    }
+
+    pub fn is_planning_mode(&self) -> bool {
+        self.planning_mode
     }
 
     /// Process a user message and return agent responses
@@ -43,11 +78,12 @@ impl AgentLoop {
             parts: vec![Part::text(user_input)],
         });
 
-        // Determine if this is a complex task (needs Pro model)
-        let prefer_smart = self.is_complex_task(user_input);
+        // In planning mode, always prefer Pro models
+        let prefer_smart = self.planning_mode || self.is_complex_task(user_input);
 
         // Main agent loop - keeps going until no more tool calls
-        let max_iterations = 15;
+        // Planning mode gets fewer iterations (just reading + planning)
+        let max_iterations = if self.planning_mode { 8 } else { 15 };
         for iteration in 0..max_iterations {
             // Check if we need to compact conversation
             if self.total_conversation_tokens > self.config.auto_compact_threshold {
@@ -66,10 +102,24 @@ impl AgentLoop {
 
             on_event(AgentEvent::ModelSwitch(model.display_name().to_string()));
 
-            // Build request
-            let tools = ToolRegistry::declarations();
+            // Build request - use planning prompt in planning mode
+            let system_prompt = if self.planning_mode {
+                format!(
+                    "{}\n\n{}",
+                    PLANNING_SYSTEM_PROMPT, &self.config.system_prompt
+                )
+            } else {
+                self.config.system_prompt.clone()
+            };
+
+            // In planning mode, only provide read-only tools
+            let tools = if self.planning_mode {
+                ToolRegistry::read_only_declarations()
+            } else {
+                ToolRegistry::declarations()
+            };
             let request = build_request(
-                &self.config.system_prompt,
+                &system_prompt,
                 self.conversation.clone(),
                 Some(tools),
                 model,

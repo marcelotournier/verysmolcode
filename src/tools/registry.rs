@@ -1,5 +1,5 @@
 use crate::api::types::{FunctionDecl, ToolDeclaration};
-use crate::tools::{file_ops, git, grep};
+use crate::tools::{file_ops, git, grep, web};
 use serde_json::{json, Value};
 
 /// Execute a tool by name with the given arguments
@@ -21,6 +21,7 @@ pub fn execute_tool(name: &str, args: &Value) -> Value {
         "git_push" => git::git_push(args),
         "git_pull" => git::git_pull(args),
         "run_command" => git::run_shell(args),
+        "web_fetch" => web::web_fetch(args),
         _ => json!({"error": format!("Unknown tool: {}", name)}),
     }
 }
@@ -273,6 +274,21 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                     "required": ["command"]
                 }),
             },
+            FunctionDecl {
+                name: "web_fetch".to_string(),
+                description: "Fetch a URL and return its text content. Useful for reading documentation, API references, or web pages. HTML is stripped to plain text."
+                    .to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL to fetch (must start with http:// or https://)"
+                        }
+                    },
+                    "required": ["url"]
+                }),
+            },
         ],
     }]
 }
@@ -282,6 +298,30 @@ pub struct ToolRegistry;
 impl ToolRegistry {
     pub fn declarations() -> Vec<ToolDeclaration> {
         get_tool_declarations()
+    }
+
+    /// Read-only tools for planning mode - no file writes, no git mutations
+    pub fn read_only_declarations() -> Vec<ToolDeclaration> {
+        let all = get_tool_declarations();
+        let read_only_names = [
+            "read_file",
+            "list_directory",
+            "grep_search",
+            "find_files",
+            "git_status",
+            "git_diff",
+            "git_log",
+            "web_fetch",
+        ];
+
+        vec![ToolDeclaration {
+            function_declarations: all[0]
+                .function_declarations
+                .iter()
+                .filter(|f| read_only_names.contains(&f.name.as_str()))
+                .cloned()
+                .collect(),
+        }]
     }
 
     pub fn execute(name: &str, args: &Value) -> Value {
