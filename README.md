@@ -7,10 +7,12 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 - **CLI Prompt Mode**: `vsc -p "prompt"` for single-shot usage (like `claude -p`), supports piped input
 - **Command Autocomplete**: Type `/` to see all available commands with descriptions, navigate with arrow keys
 - **Smart Model Routing**: 6 models across Gemini 3.x and 2.5 — automatically selects the best available model based on task complexity, with graceful fallback when rate-limited or overloaded
-- **Planning Mode**: `/plan` for read-only analysis using Pro models before making changes
-- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading (18 tools)
+- **Planning Mode**: `/plan` for thorough analysis — reads code, creates architecture plans, and builds a todo list to guide implementation
+- **Task Tracking**: Built-in todo list (like Claude Code) — the agent creates and tracks tasks during complex work, visible with `/todo`
+- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading (19 tools)
 - **MCP Support**: Connect to MCP servers (context7, playwright, etc.) via `/mcp-add` — tools are live in the agent loop
-- **Critic Verification**: After tool use, a lightweight model verifies the work was done correctly
+- **Code Reviewer**: After tool use, reviews actual `git diff` with a structured checklist (correctness, bugs, completeness, style)
+- **Chain-of-Thought**: All 6 models use thinking tokens for better reasoning, with tier-scaled budgets (Pro 2048, Flash 1024, Lite 512)
 - **Token-Aware**: `/tokens` dashboard, `/fast`/`/smart` model selection, rate limit warnings, conversation compaction, and thinking budget control
 - **Safe by Default**: Blocks destructive operations, validates paths, and prevents dangerous commands
 - **Lightweight**: ~5MB binary, minimal memory footprint, runs on Raspberry Pi 3
@@ -84,6 +86,7 @@ vsc -v
 | `/mcp`       | List configured MCP servers                       |
 | `/mcp-add`   | Add MCP server: `/mcp-add name command [args]`   |
 | `/mcp-rm`    | Remove MCP server: `/mcp-rm name`                |
+| `/todo`      | Show current task list (alias: `/t`)             |
 | `/retry`     | Retry the last message (alias: `/r`)             |
 | `/version`   | Show version information                          |
 | `/clear`     | Clear conversation and screen                     |
@@ -155,7 +158,8 @@ src/
     grep.rs         - Search and find files
     git.rs          - Git operations and shell commands
     web.rs          - Web page fetching
-    registry.rs     - Tool registration and dispatch (18 tools)
+    todo.rs         - Task tracking (agent todo list)
+    registry.rs     - Tool registration and dispatch (19 tools)
   mcp/
     client.rs       - MCP client (stdio JSON-RPC 2.0)
     config.rs       - MCP server configuration
@@ -170,7 +174,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (228 tests)
+# Unit tests (483 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)

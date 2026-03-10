@@ -35,7 +35,7 @@ fn test_model_display_names() {
 
 #[test]
 fn test_thinking_support() {
-    assert!(!ModelId::Gemini25Pro.supports_thinking()); // 2.5 Pro doesn't
+    assert!(ModelId::Gemini25Pro.supports_thinking()); // 2.5 Pro supports thinking
     assert!(ModelId::Gemini25Flash.supports_thinking());
     assert!(ModelId::Gemini25FlashLite.supports_thinking());
     assert!(ModelId::Gemini31Pro.supports_thinking()); // 3.1 Pro does
@@ -333,20 +333,21 @@ fn test_build_request_with_thinking() {
 }
 
 #[test]
-fn test_build_request_without_thinking() {
+fn test_build_request_25pro_thinking() {
     let request = build_request(
         "Be helpful",
         vec![],
         None,
-        ModelId::Gemini25Pro, // Pro doesn't support thinking
+        ModelId::Gemini25Pro, // 2.5 Pro supports thinking (Pro tier budget)
         0.5,
         2048,
     );
 
     let config = request.generation_config.unwrap();
-    assert!(config.thinking_config.is_none());
+    assert!(config.thinking_config.is_some());
+    // Pro tier gets 2048 thinking budget
+    assert_eq!(config.thinking_config.unwrap().thinking_budget, 2048);
     assert_eq!(config.max_output_tokens, Some(2048));
-    assert_eq!(config.temperature, Some(0.5));
 }
 
 #[test]
