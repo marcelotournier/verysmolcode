@@ -80,6 +80,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [test]
     strategy:
+      fail-fast: false
       matrix:
         include:
           # x86_64 Linux
@@ -88,14 +89,15 @@ jobs:
             manylinux: auto
             artifact: wheels-linux-x86_64
           # aarch64 Linux (Raspberry Pi 3/4/5, ARM servers)
+          # Use manylinux_2_28 for newer GCC that properly defines __ARM_ARCH
           - os: ubuntu-latest
             target: aarch64
-            manylinux: auto
+            manylinux: 2_28
             artifact: wheels-linux-aarch64
           # armv7 Linux (Raspberry Pi 2/3 32-bit OS)
           - os: ubuntu-latest
             target: armv7
-            manylinux: auto
+            manylinux: 2_28
             artifact: wheels-linux-armv7
     steps:
       - uses: actions/checkout@v4
