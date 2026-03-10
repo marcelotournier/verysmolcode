@@ -1,11 +1,13 @@
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdout, Command, Stdio};
 
 use crate::mcp::types::*;
 
 /// MCP client that communicates with a server via stdio
 pub struct McpClient {
     process: Child,
+    /// Persistent BufReader over stdout — prevents data loss between requests
+    stdout_reader: BufReader<ChildStdout>,
     name: String,
     request_id: u64,
     pub tools: Vec<McpTool>,
@@ -56,8 +58,16 @@ impl McpClient {
             })
         });
 
+        // Take stdout for persistent BufReader (prevents data loss between requests)
+        let stdout = process
+            .stdout
+            .take()
+            .ok_or("Failed to capture MCP server stdout")?;
+        let stdout_reader = BufReader::new(stdout);
+
         let mut client = Self {
             process,
+            stdout_reader,
             name: config.name.clone(),
             request_id: 0,
             tools: Vec::new(),
@@ -96,20 +106,14 @@ impl McpClient {
             .map_err(|e| format!("Write newline error: {}", e))?;
         stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
 
-        // Read response
-        let stdout = self
-            .process
-            .stdout
-            .as_mut()
-            .ok_or("Failed to access stdout")?;
-        let mut reader = BufReader::new(stdout);
+        // Read response using persistent BufReader (preserves buffered data between calls)
         let mut line = String::new();
 
         // Read lines until we get a valid JSON-RPC response (max 1000 lines to prevent infinite loop)
         let max_lines = 1000;
         for _ in 0..max_lines {
             line.clear();
-            match reader.read_line(&mut line) {
+            match self.stdout_reader.read_line(&mut line) {
                 Ok(0) => {
                     let stderr_info = self
                         .last_stderr
@@ -156,14 +160,14 @@ impl McpClient {
             return Err(format!("MCP init error: {}", err.message));
         }
 
-        // Send initialized notification
+        // Send initialized notification (fire-and-forget, but log failure)
         let notif = JsonRpcRequest::new(self.next_id(), "notifications/initialized", None);
-        // Send but don't wait for response (it's a notification)
         if let Some(stdin) = self.process.stdin.as_mut() {
-            let json = serde_json::to_string(&notif).unwrap_or_default();
-            let _ = stdin.write_all(json.as_bytes());
-            let _ = stdin.write_all(b"\n");
-            let _ = stdin.flush();
+            if let Ok(json) = serde_json::to_string(&notif) {
+                let _ = stdin.write_all(json.as_bytes());
+                let _ = stdin.write_all(b"\n");
+                let _ = stdin.flush();
+            }
         }
 
         Ok(())
