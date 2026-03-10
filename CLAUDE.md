@@ -289,6 +289,14 @@
 - [x] Bash mode context injection: !commands inform the AI of what user ran
 - [x] 483 unit tests
 
+## Completed (v0.11.2) — File Autocomplete & Diff
+- [x] @ file autocomplete: type @ to see project files, arrows/tab to select
+- [x] Fuzzy matching against git-tracked files (git ls-files)
+- [x] File cache with 10s TTL (avoids repeated git calls)
+- [x] /diff (/d) command: shows git diff output in TUI
+- [x] Green-themed file suggestion popup (distinct from blue command popup)
+- [x] 492 unit tests
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -306,10 +314,10 @@ These are table-stakes features that both OpenCode and Claude Code have.
 - [x] Auto-save on exit, load on resume
 - [x] Session cleanup (max 10 sessions, auto-prune)
 
-### P1.2 - File Reference with @ Autocomplete
-- [ ] Type @ to trigger file path autocomplete dropdown
-- [ ] Fuzzy matching against project files
-- [ ] @file.rs#10-25 line range syntax
+### P1.2 - File Reference with @ Autocomplete ✅ (v0.11.2)
+- [x] Type @ to trigger file path autocomplete dropdown
+- [x] Fuzzy matching against project files (git ls-files)
+- [ ] @file.rs#10-25 line range syntax (future enhancement)
 - [ ] File content injected into conversation context
 - [ ] Frecency ranking (recently used files first)
 
@@ -323,8 +331,9 @@ These are table-stakes features that both OpenCode and Claude Code have.
 - [ ] Output displayed in TUI and added to conversation context
 - [ ] History integration
 
-### P1.5 - Improved Diff Display
-- [ ] /diff command showing git diff with syntax coloring
+### P1.5 - Improved Diff Display ✅ (v0.11.2, basic)
+- [x] /diff command showing git diff in TUI
+- [ ] Syntax-colored diff output (future enhancement)
 - [ ] Per-turn diff tracking (what changed in this response)
 - [ ] Side-by-side or unified diff view (width-adaptive)
 

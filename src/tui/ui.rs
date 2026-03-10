@@ -40,9 +40,11 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_input(f, chunks[2], app);
     draw_status_bar(f, chunks[3], app);
 
-    // Draw command suggestion popup (overlay, drawn last)
+    // Draw suggestion popups (overlay, drawn last)
     if !app.command_suggestions.is_empty() && !app.is_processing {
         draw_suggestions(f, chunks[2], app);
+    } else if !app.file_suggestions.is_empty() && !app.is_processing {
+        draw_file_suggestions(f, chunks[2], app);
     }
 }
 
@@ -383,6 +385,56 @@ fn draw_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
                 Style::default().fg(SUGGESTION_DESC_COLOR).bg(bg),
             ),
         ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    f.render_widget(paragraph, inner);
+}
+
+fn draw_file_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
+    let count = app.file_suggestions.len().min(10);
+    if count == 0 {
+        return;
+    }
+
+    let height = count as u16 + 2;
+    let width = 60u16.min(input_area.width);
+    let x = input_area.x + 1;
+    let y = input_area.y.saturating_sub(height);
+
+    let popup_area = Rect::new(x, y, width, height);
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Rgb(100, 200, 150)))
+        .style(Style::default().bg(SUGGESTION_BG))
+        .title(" @ Files ")
+        .title_alignment(Alignment::Left);
+
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, path) in app.file_suggestions.iter().take(10).enumerate() {
+        let is_selected = app.file_suggestion_index == Some(i);
+        let bg = if is_selected {
+            SUGGESTION_HIGHLIGHT
+        } else {
+            SUGGESTION_BG
+        };
+
+        let max_len = inner.width as usize;
+        let display = if path.len() > max_len {
+            format!("...{}", &path[path.len() - (max_len - 3)..])
+        } else {
+            path.to_string()
+        };
+
+        lines.push(Line::from(Span::styled(
+            display,
+            Style::default().fg(Color::Rgb(130, 200, 170)).bg(bg).bold(),
+        )));
     }
 
     let paragraph = Paragraph::new(lines);

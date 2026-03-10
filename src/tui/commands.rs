@@ -30,6 +30,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "/resume",
         "Resume last session or list recent: /resume [id]",
     ),
+    ("/diff", "Show git diff (unstaged changes)"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -55,6 +56,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  /compact    Compact conversation\n");
             help.push_str("\n\u{1F527} Tools\n");
             help.push_str("  /undo       Revert last file changes\n");
+            help.push_str("  /diff       Show git diff\n");
             help.push_str("  /save       Save conversation to file\n");
             help.push_str("  /todo       Show task list\n");
             help.push_str("  /retry      Retry last message\n");
@@ -289,6 +291,37 @@ pub fn handle_command(input: &str) -> CommandResponse {
             env!("CARGO_PKG_VERSION")
         )),
         "/retry" | "/r" => CommandResponse::Retry,
+        "/diff" | "/d" => {
+            let diff_args = if args.is_empty() { "" } else { args };
+            let output = std::process::Command::new("git")
+                .args(["diff"])
+                .args(diff_args.split_whitespace())
+                .output();
+            match output {
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    if stdout.is_empty() && stderr.is_empty() {
+                        CommandResponse::Message("No unstaged changes.".to_string())
+                    } else if !stderr.is_empty() && stdout.is_empty() {
+                        CommandResponse::Message(format!("git diff error: {}", stderr.trim()))
+                    } else {
+                        // Truncate large diffs
+                        let text = if stdout.len() > 8000 {
+                            format!(
+                                "{}...\n\n(truncated, {} bytes total)",
+                                &stdout[..8000],
+                                stdout.len()
+                            )
+                        } else {
+                            stdout.to_string()
+                        };
+                        CommandResponse::Message(text)
+                    }
+                }
+                Err(e) => CommandResponse::Message(format!("Failed to run git diff: {}", e)),
+            }
+        }
         "/todo" | "/t" => CommandResponse::ShowTodo,
         "/resume" => {
             if args.is_empty() {

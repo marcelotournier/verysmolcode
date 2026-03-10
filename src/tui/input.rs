@@ -66,6 +66,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             // If suggestion popup is open and one is selected, fill it in first
             if !app.command_suggestions.is_empty() && app.suggestion_index.is_some() {
                 app.select_suggestion();
+            } else if !app.file_suggestions.is_empty() && app.file_suggestion_index.is_some() {
+                app.select_file_suggestion();
             } else if app.input.ends_with('\\') {
                 // Multi-line: \ + Enter adds a newline instead of submitting
                 app.input.pop(); // remove trailing backslash
@@ -147,9 +149,15 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Up => {
             if !app.command_suggestions.is_empty() {
-                // Navigate suggestions up
                 let len = app.command_suggestions.len();
                 app.suggestion_index = Some(match app.suggestion_index {
+                    Some(i) if i > 0 => i - 1,
+                    Some(_) => len - 1,
+                    None => len - 1,
+                });
+            } else if !app.file_suggestions.is_empty() {
+                let len = app.file_suggestions.len();
+                app.file_suggestion_index = Some(match app.file_suggestion_index {
                     Some(i) if i > 0 => i - 1,
                     Some(_) => len - 1,
                     None => len - 1,
@@ -160,9 +168,15 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Down => {
             if !app.command_suggestions.is_empty() {
-                // Navigate suggestions down
                 let len = app.command_suggestions.len();
                 app.suggestion_index = Some(match app.suggestion_index {
+                    Some(i) if i + 1 < len => i + 1,
+                    Some(_) => 0,
+                    None => 0,
+                });
+            } else if !app.file_suggestions.is_empty() {
+                let len = app.file_suggestions.len();
+                app.file_suggestion_index = Some(match app.file_suggestion_index {
                     Some(i) if i + 1 < len => i + 1,
                     Some(_) => 0,
                     None => 0,
@@ -178,9 +192,10 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             app.scroll_down();
         }
         KeyCode::Tab => {
-            // Select from suggestion popup, or autocomplete
             if !app.command_suggestions.is_empty() {
                 app.select_suggestion();
+            } else if !app.file_suggestions.is_empty() {
+                app.select_file_suggestion();
             } else if app.input.starts_with('/') {
                 let completions = crate::tui::commands::autocomplete(&app.input);
                 if completions.len() == 1 {
@@ -190,9 +205,10 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Esc => {
-            // Dismiss suggestion popup
             app.command_suggestions.clear();
             app.suggestion_index = None;
+            app.file_suggestions.clear();
+            app.file_suggestion_index = None;
         }
         _ => {}
     }

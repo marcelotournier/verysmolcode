@@ -44,6 +44,12 @@ pub struct App {
     // Command autocomplete popup
     pub command_suggestions: Vec<(String, String)>,
     pub suggestion_index: Option<usize>,
+
+    // File @ autocomplete
+    pub file_suggestions: Vec<String>,
+    pub file_suggestion_index: Option<usize>,
+    file_cache: Vec<String>,
+    file_cache_time: std::time::Instant,
 }
 
 impl App {
@@ -70,6 +76,10 @@ impl App {
             planning_mode: false,
             command_suggestions: Vec::new(),
             suggestion_index: None,
+            file_suggestions: Vec::new(),
+            file_suggestion_index: None,
+            file_cache: Vec::new(),
+            file_cache_time: std::time::Instant::now(),
         };
 
         // Welcome message (rendered as styled widget in ui.rs when messages are empty)
@@ -564,6 +574,7 @@ impl App {
     }
 
     pub fn update_suggestions(&mut self) {
+        // Check for / command completion
         if self.input.starts_with('/') && !self.input.contains(' ') {
             let input = self.input.to_lowercase();
             self.command_suggestions = crate::tui::commands::COMMANDS
@@ -571,15 +582,113 @@ impl App {
                 .filter(|(cmd, _)| cmd.starts_with(&input))
                 .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
                 .collect();
-            // Reset selection if out of bounds
             if let Some(idx) = self.suggestion_index {
                 if idx >= self.command_suggestions.len() {
                     self.suggestion_index = None;
                 }
             }
+            self.file_suggestions.clear();
+            self.file_suggestion_index = None;
+            return;
+        }
+
+        self.command_suggestions.clear();
+        self.suggestion_index = None;
+
+        // Check for @ file completion
+        if let Some(at_query) = self.get_at_query() {
+            self.update_file_suggestions(&at_query);
         } else {
-            self.command_suggestions.clear();
-            self.suggestion_index = None;
+            self.file_suggestions.clear();
+            self.file_suggestion_index = None;
+        }
+    }
+
+    fn get_at_query(&self) -> Option<String> {
+        let before_cursor = &self.input[..self.cursor_pos.min(self.input.len())];
+        // Find the last @ that starts a file reference
+        if let Some(at_pos) = before_cursor.rfind('@') {
+            // @ must be at start or preceded by a space
+            if at_pos == 0 || before_cursor.as_bytes().get(at_pos - 1) == Some(&b' ') {
+                let query = &before_cursor[at_pos + 1..];
+                // Don't trigger if there's a space after the query (finished typing)
+                if !query.contains(' ') {
+                    return Some(query.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn update_file_suggestions(&mut self, query: &str) {
+        // Refresh file cache every 10 seconds
+        if self.file_cache.is_empty()
+            || self.file_cache_time.elapsed() > std::time::Duration::from_secs(10)
+        {
+            self.file_cache = Self::get_project_files();
+            self.file_cache_time = std::time::Instant::now();
+        }
+
+        let query_lower = query.to_lowercase();
+        self.file_suggestions = self
+            .file_cache
+            .iter()
+            .filter(|f| {
+                let f_lower = f.to_lowercase();
+                if query_lower.is_empty() {
+                    true
+                } else {
+                    // Match path contains query, or filename starts with query
+                    f_lower.contains(&query_lower)
+                }
+            })
+            .take(10)
+            .cloned()
+            .collect();
+
+        if let Some(idx) = self.file_suggestion_index {
+            if idx >= self.file_suggestions.len() {
+                self.file_suggestion_index = None;
+            }
+        }
+    }
+
+    fn get_project_files() -> Vec<String> {
+        // Try git ls-files first (fast, respects .gitignore)
+        if let Ok(output) = std::process::Command::new("git")
+            .args(["ls-files", "--cached", "--others", "--exclude-standard"])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                return stdout.lines().take(500).map(|s| s.to_string()).collect();
+            }
+        }
+        Vec::new()
+    }
+
+    pub fn select_file_suggestion(&mut self) -> bool {
+        if self.file_suggestions.is_empty() {
+            return false;
+        }
+        let idx = self.file_suggestion_index.unwrap_or(0);
+        if idx < self.file_suggestions.len() {
+            let file = self.file_suggestions[idx].clone();
+            // Replace @query with @file
+            if let Some(at_pos) = self.input[..self.cursor_pos.min(self.input.len())].rfind('@') {
+                self.input = format!(
+                    "{}{} {}",
+                    &self.input[..at_pos + 1],
+                    file,
+                    &self.input[self.cursor_pos.min(self.input.len())..]
+                );
+                self.cursor_pos = at_pos + 1 + file.len() + 1;
+            }
+            self.file_suggestions.clear();
+            self.file_suggestion_index = None;
+            true
+        } else {
+            false
         }
     }
 
@@ -904,6 +1013,10 @@ impl App {
             planning_mode: false,
             command_suggestions: Vec::new(),
             suggestion_index: None,
+            file_suggestions: Vec::new(),
+            file_suggestion_index: None,
+            file_cache: Vec::new(),
+            file_cache_time: std::time::Instant::now(),
         }
     }
 }
@@ -1384,5 +1497,92 @@ mod tests {
         let result = json!({"path": "/img/photo.png", "size_bytes": 1024});
         let summary = summarize_tool_result("read_image", &result);
         assert_eq!(summary, "[image] /img/photo.png (1024 bytes)");
+    }
+
+    // -- @ file autocomplete tests --
+
+    #[test]
+    fn test_get_at_query_basic() {
+        let mut app = App::test_new();
+        app.input = "look at @src".to_string();
+        app.cursor_pos = app.input.len();
+        assert_eq!(app.get_at_query(), Some("src".to_string()));
+    }
+
+    #[test]
+    fn test_get_at_query_start() {
+        let mut app = App::test_new();
+        app.input = "@main".to_string();
+        app.cursor_pos = app.input.len();
+        assert_eq!(app.get_at_query(), Some("main".to_string()));
+    }
+
+    #[test]
+    fn test_get_at_query_no_at() {
+        let mut app = App::test_new();
+        app.input = "hello world".to_string();
+        app.cursor_pos = app.input.len();
+        assert_eq!(app.get_at_query(), None);
+    }
+
+    #[test]
+    fn test_get_at_query_at_in_word() {
+        let mut app = App::test_new();
+        app.input = "email@test".to_string();
+        app.cursor_pos = app.input.len();
+        // @ not preceded by space, should not trigger
+        assert_eq!(app.get_at_query(), None);
+    }
+
+    #[test]
+    fn test_get_at_query_empty_after_at() {
+        let mut app = App::test_new();
+        app.input = "read @".to_string();
+        app.cursor_pos = app.input.len();
+        assert_eq!(app.get_at_query(), Some("".to_string()));
+    }
+
+    #[test]
+    fn test_get_at_query_completed() {
+        let mut app = App::test_new();
+        app.input = "read @file.rs and fix".to_string();
+        app.cursor_pos = app.input.len();
+        // @ query has space after it, should not trigger (cursor is past)
+        assert_eq!(app.get_at_query(), None);
+    }
+
+    #[test]
+    fn test_file_suggestions_filter() {
+        let mut app = App::test_new();
+        app.file_cache = vec![
+            "src/main.rs".to_string(),
+            "src/lib.rs".to_string(),
+            "src/tui/app.rs".to_string(),
+            "Cargo.toml".to_string(),
+        ];
+        app.file_cache_time = std::time::Instant::now();
+        app.update_file_suggestions("main");
+        assert_eq!(app.file_suggestions.len(), 1);
+        assert_eq!(app.file_suggestions[0], "src/main.rs");
+    }
+
+    #[test]
+    fn test_file_suggestions_empty_query() {
+        let mut app = App::test_new();
+        app.file_cache = vec!["a.rs".into(), "b.rs".into(), "c.rs".into()];
+        app.file_cache_time = std::time::Instant::now();
+        app.update_file_suggestions("");
+        assert_eq!(app.file_suggestions.len(), 3);
+    }
+
+    #[test]
+    fn test_select_file_suggestion() {
+        let mut app = App::test_new();
+        app.input = "fix @ma".to_string();
+        app.cursor_pos = app.input.len();
+        app.file_suggestions = vec!["src/main.rs".to_string()];
+        app.file_suggestion_index = Some(0);
+        assert!(app.select_file_suggestion());
+        assert_eq!(app.input, "fix @src/main.rs ");
     }
 }
