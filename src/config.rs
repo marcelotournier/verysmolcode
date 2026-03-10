@@ -81,8 +81,13 @@ Working directory: {cwd}
 - ALWAYS use tools — don't just describe what to do. Read files before editing.
 - Use edit_file for changes (not write_file). Use grep_search/find_files to explore.
 - run_command has a {timeout}s timeout. Use MCP tools (e.g. context7) for library docs.
-- IMPORTANT: Before creating or modifying files, ALWAYS create a todo list first using todo_update(action:"add") for each step. Mark tasks as started (action:"start") when you begin, and done (action:"done") when complete. This keeps the user informed of progress.
-- Ask before ambiguous or destructive actions. Summarize when done."#,
+- CRITICAL: Before ANY file creation or modification, ALWAYS plan first:
+  1. Call todo_update(action:"add") for each step of work
+  2. Call todo_update(action:"start", id:N) when starting a step
+  3. Call todo_update(action:"done", id:N) when a step is complete
+  The user sees the todo list in their status bar. Never skip this.
+- Ask before ambiguous or destructive actions.
+- After completing all changes, give a brief summary of what was done."#,
         cwd = cwd,
         git_context = git_context,
         timeout = super::tools::git::command_timeout_secs()

@@ -423,4 +423,54 @@ mod tests {
         let todo = TodoList::default();
         assert!(todo.is_empty());
     }
+
+    #[test]
+    fn test_current_task_summary_empty() {
+        let todo = TodoList::new();
+        assert!(todo.current_task_summary().is_none());
+    }
+
+    #[test]
+    fn test_current_task_summary_pending() {
+        let mut todo = TodoList::new();
+        todo.add("Fix the bug");
+        todo.add("Write tests");
+        let summary = todo.current_task_summary().unwrap();
+        assert!(summary.contains("[0/2]"));
+        assert!(summary.contains("Fix the bug"));
+    }
+
+    #[test]
+    fn test_current_task_summary_in_progress() {
+        let mut todo = TodoList::new();
+        let id = todo.add("Fix the bug");
+        todo.add("Write tests");
+        todo.update(id, TodoStatus::InProgress);
+        let summary = todo.current_task_summary().unwrap();
+        assert!(summary.contains("[0/2]"));
+        assert!(summary.contains("Fix the bug"));
+    }
+
+    #[test]
+    fn test_current_task_summary_partial_done() {
+        let mut todo = TodoList::new();
+        let id1 = todo.add("Fix the bug");
+        todo.add("Write tests");
+        todo.update(id1, TodoStatus::Done);
+        let summary = todo.current_task_summary().unwrap();
+        assert!(summary.contains("[1/2]"));
+        assert!(summary.contains("Write tests"));
+    }
+
+    #[test]
+    fn test_current_task_summary_all_done() {
+        let mut todo = TodoList::new();
+        let id1 = todo.add("Fix the bug");
+        let id2 = todo.add("Write tests");
+        todo.update(id1, TodoStatus::Done);
+        todo.update(id2, TodoStatus::Done);
+        let summary = todo.current_task_summary().unwrap();
+        assert!(summary.contains("[2/2]"));
+        assert!(summary.contains("All tasks done"));
+    }
 }
