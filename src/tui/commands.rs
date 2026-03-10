@@ -24,6 +24,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     ("/mcp-rm", "Remove an MCP server: /mcp-rm <name>"),
     ("/version", "Show version information"),
+    ("/retry", "Retry the last message"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -263,6 +264,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
             env!("CARGO_PKG_VERSION")
         )),
+        "/retry" | "/r" => CommandResponse::Retry,
         _ => CommandResponse::Message(format!(
             "Unknown command: {}. Type /help for available commands.",
             cmd

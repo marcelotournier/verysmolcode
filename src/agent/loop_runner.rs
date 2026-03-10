@@ -358,6 +358,18 @@ impl AgentLoop {
                                 return Err(e);
                             }
                         }
+                        Err(e) if is_transient_error(&e) => {
+                            // Retry once on transient network errors
+                            if !retried {
+                                on_event(AgentEvent::Status(
+                                    "Network error, retrying...".to_string(),
+                                ));
+                                std::thread::sleep(std::time::Duration::from_secs(2));
+                                retried = true;
+                                continue;
+                            }
+                            return Err(e);
+                        }
                         Err(e) => return Err(e),
                     }
                 }
@@ -750,6 +762,18 @@ pub enum AgentEvent {
     Status(String),
 }
 
+/// Check if an error is transient (network issues, timeouts) and worth retrying
+pub fn is_transient_error(e: &str) -> bool {
+    e.contains("timeout")
+        || e.contains("timed out")
+        || e.contains("connection")
+        || e.contains("Connection")
+        || e.contains("reset")
+        || e.contains("500")
+        || e.contains("502")
+        || e.contains("504")
+}
+
 /// Check if an error indicates rate limiting or overload
 pub fn is_rate_limit_error(e: &str) -> bool {
     e.contains("429")
@@ -963,5 +987,26 @@ mod tests {
         assert!(PLANNING_SYSTEM_PROMPT.contains("PLANNING MODE"));
         assert!(PLANNING_SYSTEM_PROMPT.contains("DO NOT make any changes"));
         assert!(PLANNING_SYSTEM_PROMPT.contains("read files"));
+    }
+
+    #[test]
+    fn test_transient_error_detection() {
+        assert!(is_transient_error("connection reset by peer"));
+        assert!(is_transient_error("request timed out"));
+        assert!(is_transient_error("HTTP 500 Internal Server Error"));
+        assert!(is_transient_error("HTTP 502 Bad Gateway"));
+        assert!(is_transient_error("HTTP 504 Gateway Timeout"));
+        assert!(!is_transient_error("HTTP 429 Too Many Requests")); // rate limit, not transient
+        assert!(!is_transient_error("invalid API key"));
+    }
+
+    #[test]
+    fn test_rate_limit_error_detection() {
+        assert!(is_rate_limit_error("HTTP 429 Too Many Requests"));
+        assert!(is_rate_limit_error("rate limit exceeded"));
+        assert!(is_rate_limit_error("quota exceeded"));
+        assert!(is_rate_limit_error("HTTP 503 high demand"));
+        assert!(!is_rate_limit_error("connection reset"));
+        assert!(!is_rate_limit_error("invalid key"));
     }
 }

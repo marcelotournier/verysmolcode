@@ -271,6 +271,19 @@ impl App {
                     }
                     self.is_processing = true;
                 }
+                CommandResponse::Retry => {
+                    // Resend the last non-command message
+                    if let Some(last) = self.last_user_message() {
+                        self.messages.push(DisplayMessage::Status(
+                            "Retrying last message...".to_string(),
+                        ));
+                        self.send_to_agent(&last);
+                    } else {
+                        self.messages.push(DisplayMessage::Status(
+                            "No previous message to retry.".to_string(),
+                        ));
+                    }
+                }
                 CommandResponse::SetModelOverride(mode) => {
                     // Send override command to agent thread
                     if let Some(tx) = &self.agent_tx {
@@ -460,6 +473,15 @@ impl App {
 }
 
 impl App {
+    /// Find the last user message that was sent to the agent (not a command)
+    fn last_user_message(&self) -> Option<String> {
+        self.input_history
+            .iter()
+            .rev()
+            .find(|m| !m.starts_with('/'))
+            .cloned()
+    }
+
     pub fn update_suggestions(&mut self) {
         if self.input.starts_with('/') && !self.input.contains(' ') {
             let input = self.input.to_lowercase();
@@ -576,6 +598,7 @@ pub enum CommandResponse {
     SetModelOverride(String), // "fast" or "smart"
     Undo,
     Save(Option<String>), // Optional filename
+    Retry,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -771,6 +794,7 @@ mod tests {
         let _undo = CommandResponse::Undo;
         let _save = CommandResponse::Save(None);
         let _save_file = CommandResponse::Save(Some("test.md".to_string()));
+        let _retry = CommandResponse::Retry;
     }
 
     #[test]
