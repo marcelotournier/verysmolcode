@@ -87,9 +87,12 @@
 - [x] Handles: existing file restore, new file deletion, per-file dedup, one-turn bound
 - [x] 190 unit tests
 
+## Completed (v0.8.0 continued)
+- [x] /save command - exports conversation to timestamped .md file
+- [x] 192 unit tests
+
 ## Planned
 - [ ] macOS and Windows wheel builds in CI
-- [ ] Conversation export/save (/save)
 
 # Lessons Learned
 
