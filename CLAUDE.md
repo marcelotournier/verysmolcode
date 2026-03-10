@@ -349,12 +349,15 @@
 - [x] Current task displayed in status bar (shows progress: [done/total] task)
 - [x] Todo updates sent from agent loop to TUI in real-time via TodoUpdate event
 
-## Completed (v0.12.3) — Auto-Todo, @file#line-range
+## Completed (v0.12.3) — Auto-Todo, @file#line-range, /copy, [WEB] Badge
 - [x] System prompt now instructs agent to always create todo lists before file operations
 - [x] @file#10-25 line range syntax: reference specific lines of a file
 - [x] @file#5 single line reference support
 - [x] Invalid line ranges gracefully fall back to reading whole file
-- [x] 5 new unit tests for line range parsing and expansion
+- [x] /copy (/cp) command: copies last AI response to clipboard (xclip/xsel/wl-copy/pbcopy/clip)
+- [x] [WEB] badge in header when Google Search grounding is active
+- [x] [PLAN] badge consolidated into badge system
+- [x] 288 unit tests
 
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
