@@ -274,6 +274,13 @@
 - [x] Fixed context7 MCP package name: @anthropic-ai -> @upstash/context7-mcp
 - [x] 474 unit tests
 
+## Completed (v0.11.0) — Phase 1 Start
+- [x] Multi-line input: type \ + Enter to add newlines (shows [NL] line count prefix)
+- [x] Bash mode: !command runs shell directly, output displayed in TUI
+- [x] Multi-line visual: green border tint, line count indicator, cursor tracks last line
+- [x] Help text updated with multi-line and bash mode docs
+- [x] 477 unit tests
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -301,8 +308,8 @@ These are table-stakes features that both OpenCode and Claude Code have.
 - [ ] Frecency ranking (recently used files first)
 
 ### P1.3 - Multi-Line Input
-- [ ] Shift+Enter or \ + Enter for multi-line input
-- [ ] Visual indicator showing multi-line mode
+- [x] \ + Enter for multi-line input
+- [x] Visual indicator showing multi-line mode (green border, line count)
 - [ ] Paste detection (auto multi-line for pasted content)
 
 ### P1.4 - Bash Mode (! prefix)

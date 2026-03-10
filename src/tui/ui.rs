@@ -183,13 +183,22 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
-    let label = if app.is_processing { " ... " } else { " > " };
+    let is_multiline = app.input.contains('\n');
+    let label = if app.is_processing {
+        " ... "
+    } else if is_multiline {
+        " > (multi-line, \\ + Enter) "
+    } else {
+        " > "
+    };
 
     let block = Block::default()
         .title(label)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(if app.is_processing {
             STATUS_COLOR
+        } else if is_multiline {
+            Color::Rgb(130, 180, 120) // green tint for multi-line
         } else {
             ACCENT_COLOR
         }))
@@ -198,10 +207,20 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let display_text = if app.input.is_empty() && !app.is_processing {
-        "Ask me anything or type / for commands...".to_string()
+    // For multi-line input, show only the last line with a line count prefix
+    let (display_text, cursor_offset) = if app.input.is_empty() && !app.is_processing {
+        (
+            "Ask me anything or type / for commands...".to_string(),
+            0usize,
+        )
+    } else if is_multiline {
+        let line_count = app.input.lines().count();
+        // Show last line with prefix
+        let last_line = app.input.lines().last().unwrap_or("");
+        let prefix = format!("[{}L] ", line_count);
+        (format!("{}{}", prefix, last_line), prefix.len())
     } else {
-        app.input.clone()
+        (app.input.clone(), 0)
     };
 
     let style = if app.input.is_empty() && !app.is_processing {
@@ -213,9 +232,18 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     let input = Paragraph::new(display_text).style(style);
     f.render_widget(input, inner);
 
-    // Show cursor (count chars before cursor_pos, not bytes)
+    // Show cursor
     if !app.is_processing {
-        let visual_pos = app.input[..app.cursor_pos].chars().count();
+        let cursor_text = if is_multiline {
+            // For multi-line, cursor pos is relative to last line
+            let last_line_start = app.input.rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let pos_in_line = app.cursor_pos.saturating_sub(last_line_start);
+            &app.input[last_line_start
+                ..last_line_start + pos_in_line.min(app.input.len() - last_line_start)]
+        } else {
+            &app.input[..app.cursor_pos]
+        };
+        let visual_pos = cursor_text.chars().count() + cursor_offset;
         f.set_cursor_position(Position::new(inner.x + visual_pos as u16, inner.y));
     }
 }

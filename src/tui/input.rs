@@ -66,6 +66,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             // If suggestion popup is open and one is selected, fill it in first
             if !app.command_suggestions.is_empty() && app.suggestion_index.is_some() {
                 app.select_suggestion();
+            } else if app.input.ends_with('\\') {
+                // Multi-line: \ + Enter adds a newline instead of submitting
+                app.input.pop(); // remove trailing backslash
+                app.input.push('\n');
+                app.cursor_pos = app.input.len();
+                app.update_suggestions();
             } else {
                 app.submit_input();
             }
@@ -414,6 +420,41 @@ mod tests {
         handle_key(&mut app, esc);
         assert!(app.command_suggestions.is_empty());
         assert!(app.suggestion_index.is_none());
+    }
+
+    #[test]
+    fn test_multiline_backslash_enter() {
+        let mut app = App::test_new();
+        app.input = "hello\\".to_string();
+        app.cursor_pos = 6;
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        handle_key(&mut app, key);
+        // Should replace \ with newline, not submit
+        assert_eq!(app.input, "hello\n");
+        assert_eq!(app.cursor_pos, 6);
+        assert!(app.input_history.is_empty()); // not submitted
+    }
+
+    #[test]
+    fn test_multiline_no_backslash_submits() {
+        let mut app = App::test_new();
+        app.input = "hello".to_string();
+        app.cursor_pos = 5;
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        handle_key(&mut app, key);
+        // Should submit normally
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_double_backslash_enter() {
+        // Two lines of multi-line input
+        let mut app = App::test_new();
+        app.input = "line1\nline2\\".to_string();
+        app.cursor_pos = app.input.len();
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        handle_key(&mut app, key);
+        assert_eq!(app.input, "line1\nline2\n");
     }
 
     #[test]

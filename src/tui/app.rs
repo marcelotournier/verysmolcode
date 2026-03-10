@@ -314,6 +314,42 @@ impl App {
                     )));
                 }
             }
+        } else if let Some(cmd) = input.strip_prefix('!') {
+            // Bash mode: run shell command directly, show output
+            let cmd = cmd.trim();
+            if cmd.is_empty() {
+                self.messages.push(DisplayMessage::Status(
+                    "Usage: !<command> (e.g. !ls -la)".to_string(),
+                ));
+            } else {
+                self.messages
+                    .push(DisplayMessage::User(format!("!{}", cmd)));
+                let result = crate::tools::git::run_shell(&serde_json::json!({"command": cmd}));
+                let output = if result.get("success").and_then(|v| v.as_bool()) == Some(true) {
+                    result["stdout"].as_str().unwrap_or("").trim().to_string()
+                } else if let Some(err) = result.get("error").and_then(|v| v.as_str()) {
+                    format!("Error: {}", err)
+                } else {
+                    let stderr = result["stderr"].as_str().unwrap_or("").trim();
+                    let stdout = result["stdout"].as_str().unwrap_or("").trim();
+                    if !stderr.is_empty() {
+                        format!("{}\n{}", stdout, stderr)
+                    } else {
+                        stdout.to_string()
+                    }
+                };
+                if !output.is_empty() {
+                    self.messages.push(DisplayMessage::ToolResult(output));
+                }
+                // Also inject the output into the agent conversation for context
+                if let Some(tx) = &self.agent_tx {
+                    let context = format!(
+                        "User ran shell command: `{}`. Output was included in the conversation.",
+                        cmd
+                    );
+                    let _ = tx.send(format!("/_context {}", context));
+                }
+            }
         } else {
             self.messages.push(DisplayMessage::User(input.clone()));
             self.send_to_agent(&input);

@@ -69,6 +69,9 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  PgUp/PgDn  Scroll output\n");
             help.push_str("  Tab        Select command from popup\n");
             help.push_str("  Esc        Dismiss command popup\n");
+            help.push_str("  \\ + Enter  Multi-line input\n");
+            help.push_str("\n\u{1F4BB} Shell Mode\n");
+            help.push_str("  !<command>  Run shell command directly (e.g. !ls -la)\n");
             help.push_str("\n\u{1F4A1} Tip: Type / to see command suggestions!");
             CommandResponse::Message(help)
         }
