@@ -701,8 +701,8 @@ impl AgentLoop {
         // Build a brief summary of what was discussed in the dropped messages
         let dropped_start = 1;
         let dropped_end = self.conversation.len() - keep_end;
-        let mut topics = Vec::new();
-        for msg in &self.conversation[dropped_start..dropped_end] {
+        let mut topics = Vec::with_capacity(5);
+        'outer: for msg in &self.conversation[dropped_start..dropped_end] {
             for part in &msg.parts {
                 if let Part::Text { text } = part {
                     // Extract first line as topic hint (max 80 chars)
@@ -710,6 +710,9 @@ impl AgentLoop {
                     if !first_line.is_empty() && first_line.len() > 5 {
                         let topic = safe_truncate(first_line, 80);
                         topics.push(topic.to_string());
+                        if topics.len() >= 5 {
+                            break 'outer;
+                        }
                     }
                 }
             }
@@ -751,7 +754,7 @@ impl AgentLoop {
                 _ => None,
             })
             .sum();
-        self.total_conversation_tokens = (total_chars / 4) as u32;
+        self.total_conversation_tokens = (total_chars / 4).min(u32::MAX as usize) as u32;
     }
 
     pub fn rate_limit_status(&mut self) -> String {

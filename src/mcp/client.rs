@@ -38,14 +38,19 @@ impl McpClient {
         let stderr_thread = process.stderr.take().map(|stderr| {
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
+                let max_stderr = 32_768; // 32KB cap
                 for line in reader.lines().map_while(Result::ok) {
                     if let Ok(mut buf) = stderr_buf.lock() {
-                        // Keep only last 2KB of stderr to avoid memory growth
-                        if buf.len() > 2048 {
-                            buf.clear();
+                        if buf.len() > max_stderr {
+                            // Stop accumulating — already have enough for diagnostics
+                            continue;
                         }
-                        buf.push_str(&line);
-                        buf.push('\n');
+                        if buf.len() + line.len() + 1 > max_stderr {
+                            buf.push_str("[... stderr truncated]\n");
+                        } else {
+                            buf.push_str(&line);
+                            buf.push('\n');
+                        }
                     }
                 }
             })

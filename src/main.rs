@@ -32,7 +32,10 @@ fn main() {
         // Read stdin if it's piped (not a terminal)
         let stdin_content = if !io::stdin().is_terminal() {
             let mut input = String::new();
-            io::stdin().read_to_string(&mut input).unwrap_or_default();
+            io::stdin().read_to_string(&mut input).unwrap_or_else(|e| {
+                eprintln!("Warning: failed to read stdin: {}", e);
+                0
+            });
             input.trim().to_string()
         } else {
             String::new()
