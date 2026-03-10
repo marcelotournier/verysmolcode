@@ -311,6 +311,11 @@
 - [x] /diff (/d) shortcut with args support (e.g. /diff --staged)
 - [x] 498 unit tests
 
+## Completed (v0.11.5) — Command Palette & /new
+- [x] Ctrl+P opens command palette (shows all slash commands)
+- [x] /new (/n) command: saves current session and starts fresh
+- [x] Help text updated with Ctrl+P and /new
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -365,10 +370,10 @@ Features that improve workflow continuity.
 - [ ] Restore code, conversation, or both
 - [ ] Visual checkpoint markers in message history
 
-### P2.2 - Command Palette
-- [ ] Ctrl+P opens searchable command palette
-- [ ] All slash commands + descriptions in fuzzy-filterable list
-- [ ] MCP tools listed alongside built-in commands
+### P2.2 - Command Palette ✅ (v0.11.5)
+- [x] Ctrl+P opens command palette (all slash commands)
+- [x] Filterable via existing command autocomplete
+- [ ] MCP tools listed alongside built-in commands (future)
 
 ### P2.3 - Reverse Search History ✅ (v0.11.4)
 - [x] Ctrl+R for interactive history search

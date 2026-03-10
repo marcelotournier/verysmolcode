@@ -307,6 +307,32 @@ impl App {
                 CommandResponse::Resume(id) => {
                     self.handle_resume(id.as_deref());
                 }
+                CommandResponse::NewSession => {
+                    // Save current session first
+                    if !self.messages.is_empty() {
+                        let session = crate::tui::session::Session::new(
+                            &self.messages,
+                            &self.input_history,
+                            self.total_input_tokens,
+                            self.total_output_tokens,
+                            self.total_thinking_tokens,
+                        );
+                        let _ = session.save();
+                    }
+                    // Clear everything
+                    self.messages.clear();
+                    self.total_input_tokens = 0;
+                    self.total_output_tokens = 0;
+                    self.total_thinking_tokens = 0;
+                    self.conversation_tokens = 0;
+                    self.scroll_offset = 0;
+                    if let Some(tx) = &self.agent_tx {
+                        let _ = tx.send("/clear".to_string());
+                    }
+                    self.messages.push(DisplayMessage::Status(
+                        "New session started. Previous session saved.".to_string(),
+                    ));
+                }
                 CommandResponse::Compact => {
                     if let Some(tx) = &self.agent_tx {
                         let _ = tx.send("/_compact".to_string());
@@ -891,6 +917,7 @@ pub enum CommandResponse {
     Compact,
     ShowTodo,
     Resume(Option<String>), // Optional session ID
+    NewSession,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {

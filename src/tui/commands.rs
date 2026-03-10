@@ -31,6 +31,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "Resume last session or list recent: /resume [id]",
     ),
     ("/diff", "Show git diff (unstaged changes)"),
+    ("/new", "Start a new conversation (saves current session)"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -61,6 +62,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  /todo       Show task list\n");
             help.push_str("  /retry      Retry last message\n");
             help.push_str("  /resume     Resume previous session\n");
+            help.push_str("  /new        Start new conversation\n");
             help.push_str("  /config     Show/edit configuration\n");
             help.push_str("\n\u{1F50C} MCP Servers\n");
             help.push_str("  /mcp        List MCP servers\n");
@@ -70,6 +72,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  Ctrl+C     Cancel/Quit\n  Ctrl+D     Quit (on empty input)\n");
             help.push_str("  Ctrl+L     Clear screen\n");
             help.push_str("  Ctrl+A/E   Jump to start/end of line\n");
+            help.push_str("  Ctrl+P     Command palette\n");
             help.push_str("  Ctrl+R     Search history (reverse)\n");
             help.push_str("  Ctrl+U/K   Delete before/after cursor\n");
             help.push_str("  Ctrl+W     Delete word backward\n");
@@ -291,6 +294,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
             env!("CARGO_PKG_VERSION")
         )),
+        "/new" | "/n" => CommandResponse::NewSession,
         "/retry" | "/r" => CommandResponse::Retry,
         "/diff" | "/d" => {
             let diff_args = if args.is_empty() { "" } else { args };

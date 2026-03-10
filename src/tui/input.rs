@@ -135,6 +135,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         app.search_query.clear();
                         app.search_match = None;
                     }
+                    'p' => {
+                        // Command palette: show all commands
+                        app.input = "/".to_string();
+                        app.cursor_pos = 1;
+                        app.update_suggestions();
+                    }
                     _ => {}
                 }
             } else {
