@@ -52,17 +52,8 @@ impl ModelId {
     }
 
     pub fn supports_thinking(&self) -> bool {
-        // All models support thinking via thinkingConfig
-        // Gemini 2.5 Pro added thinking support, 3.x models all have it
-        matches!(
-            self,
-            ModelId::Gemini3Flash
-                | ModelId::Gemini31FlashLite
-                | ModelId::Gemini31Pro
-                | ModelId::Gemini25Pro
-                | ModelId::Gemini25Flash
-                | ModelId::Gemini25FlashLite
-        )
+        // All current models support thinking via thinkingConfig
+        true
     }
 
     /// All known model IDs
