@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -146,6 +147,57 @@ pub fn list_dir(args: &Value) -> Value {
             })
         }
         Err(e) => json!({"error": format!("Failed to list {}: {}", path.display(), e)}),
+    }
+}
+
+/// Read an image file and return base64-encoded data for Gemini
+pub fn read_image(args: &Value) -> Value {
+    let path = match args.get("path").and_then(|v| v.as_str()) {
+        Some(p) => p,
+        None => return json!({"error": "Missing 'path' argument"}),
+    };
+
+    let path = resolve_path(path);
+
+    // Determine MIME type from extension
+    let mime_type = match path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some(ext) => {
+            return json!({"error": format!("Unsupported image format: {}", ext)});
+        }
+        None => {
+            return json!({"error": "Cannot determine image format (no extension)"});
+        }
+    };
+
+    // Limit to 10MB
+    match fs::metadata(&path) {
+        Ok(meta) if meta.len() > 10_000_000 => {
+            return json!({"error": "Image too large (max 10MB)"});
+        }
+        Err(e) => {
+            return json!({"error": format!("Cannot read {}: {}", path.display(), e)});
+        }
+        _ => {}
+    }
+
+    match fs::read(&path) {
+        Ok(data) => {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            json!({
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": b64
+                },
+                "path": path.display().to_string(),
+                "size_bytes": data.len()
+            })
+        }
+        Err(e) => json!({"error": format!("Failed to read {}: {}", path.display(), e)}),
     }
 }
 

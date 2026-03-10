@@ -271,6 +271,29 @@ impl AgentLoop {
                     name: call.name.clone(),
                     result: result.clone(),
                 });
+
+                // For read_image, include the InlineData part so Gemini can see it
+                if call.name == "read_image" {
+                    if let Some(inline) = result.get("inline_data") {
+                        if let (Some(mime), Some(data)) = (
+                            inline.get("mime_type").and_then(|v| v.as_str()),
+                            inline.get("data").and_then(|v| v.as_str()),
+                        ) {
+                            function_responses.push(Part::function_response(
+                                &call.name,
+                                serde_json::json!({"path": result.get("path"), "size_bytes": result.get("size_bytes")}),
+                            ));
+                            function_responses.push(Part::InlineData {
+                                inline_data: crate::api::types::InlineData {
+                                    mime_type: mime.to_string(),
+                                    data: data.to_string(),
+                                },
+                            });
+                            continue;
+                        }
+                    }
+                }
+
                 function_responses.push(Part::function_response(&call.name, result));
             }
 

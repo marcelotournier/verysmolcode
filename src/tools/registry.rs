@@ -22,6 +22,7 @@ pub fn execute_tool(name: &str, args: &Value) -> Value {
         "git_pull" => git::git_pull(args),
         "run_command" => git::run_shell(args),
         "web_fetch" => web::web_fetch(args),
+        "read_image" => file_ops::read_image(args),
         _ => json!({"error": format!("Unknown tool: {}", name)}),
     }
 }
@@ -275,6 +276,20 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
                 }),
             },
             FunctionDecl {
+                name: "read_image".to_string(),
+                description: "Read an image file and return its base64 data for visual analysis. Supports PNG, JPEG, GIF, WebP, BMP.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the image file"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            FunctionDecl {
                 name: "web_fetch".to_string(),
                 description: "Fetch a URL and return its text content. Useful for reading documentation, API references, or web pages. HTML is stripped to plain text."
                     .to_string(),
@@ -312,6 +327,7 @@ impl ToolRegistry {
             "git_diff",
             "git_log",
             "web_fetch",
+            "read_image",
         ];
 
         vec![ToolDeclaration {

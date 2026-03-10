@@ -178,4 +178,54 @@ fn test_tool_declarations() {
         assert!(!f.name.is_empty());
         assert!(!f.description.is_empty());
     }
+
+    // Check read_image is declared
+    assert!(funcs.iter().any(|f| f.name == "read_image"));
+}
+
+#[test]
+fn test_read_image_missing_path() {
+    let result = file_ops::read_image(&json!({}));
+    assert!(result.get("error").is_some());
+}
+
+#[test]
+fn test_read_image_nonexistent() {
+    let result = file_ops::read_image(&json!({"path": "/tmp/nonexistent_vsc_test.png"}));
+    assert!(result.get("error").is_some());
+}
+
+#[test]
+fn test_read_image_unsupported_format() {
+    let result = file_ops::read_image(&json!({"path": "/tmp/test.xyz"}));
+    let err = result.get("error").unwrap().as_str().unwrap();
+    assert!(err.contains("Unsupported"));
+}
+
+#[test]
+fn test_read_image_success() {
+    // Create a tiny valid PNG (1x1 pixel)
+    let png_data: Vec<u8> = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77,
+        0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
+        0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
+        0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
+        0xAE, 0x42, 0x60, 0x82,
+    ];
+    let path = "/tmp/vsc_test_image.png";
+    std::fs::write(path, &png_data).unwrap();
+
+    let result = file_ops::read_image(&json!({"path": path}));
+    assert!(result.get("inline_data").is_some());
+    let inline = result.get("inline_data").unwrap();
+    assert_eq!(
+        inline.get("mime_type").unwrap().as_str().unwrap(),
+        "image/png"
+    );
+    assert!(inline.get("data").unwrap().as_str().unwrap().len() > 10);
+    assert!(result.get("size_bytes").is_some());
+
+    std::fs::remove_file(path).unwrap();
 }
