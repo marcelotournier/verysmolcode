@@ -359,10 +359,15 @@
 - [x] [PLAN] badge consolidated into badge system
 - [x] 288 unit tests
 
-## Completed (v0.12.4) — Mouse Scroll Support
+## Completed (v0.12.4) — Mouse Scroll, Markdown Rendering, /copy
 - [x] Mouse scroll wheel/touchpad now scrolls message history
 - [x] EnableMouseCapture/DisableMouseCapture for proper terminal mouse support
-- [x] ScrollUp/ScrollDown mouse events handled in main event loop
+- [x] Scroll position indicator [line/total] when scrolled up
+- [x] Markdown rendering for AI responses: code blocks, inline code, bold, headers, bullets
+- [x] Code blocks with distinct background color and language hints
+- [x] Tool results now word-wrap instead of truncating on one line
+- [x] /copy (/cp) command copies last AI response to clipboard
+- [x] [WEB] badge in header when search grounding is active
 
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
