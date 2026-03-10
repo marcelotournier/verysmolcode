@@ -322,6 +322,11 @@
 - [x] Graceful handling: emails ignored, nonexistent files skipped
 - [x] 502 unit tests
 
+## Completed (v0.11.7) — Git Context Awareness
+- [x] System prompt includes git branch and status summary
+- [x] Agent always knows current branch and modified files
+- [x] Status shows up to 10 changed files, with count for overflow
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC

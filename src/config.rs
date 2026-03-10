@@ -69,11 +69,13 @@ fn default_system_prompt() -> String {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| ".".to_string());
 
+    let git_context = git_context_summary();
+
     format!(
         r#"You are VerySmolCode, a friendly coding assistant. Be concise, use emojis, celebrate wins.
 
 Working directory: {cwd}
-
+{git_context}
 ## Rules
 - ALWAYS use tools — don't just describe what to do. Read files before editing.
 - Use edit_file for changes (not write_file). Use grep_search/find_files to explore.
@@ -81,6 +83,43 @@ Working directory: {cwd}
 - For complex tasks, use todo_update to track steps (mark start/done as you go).
 - Ask before ambiguous or destructive actions. Summarize when done."#,
         cwd = cwd,
+        git_context = git_context,
         timeout = super::tools::git::command_timeout_secs()
     )
+}
+
+fn git_context_summary() -> String {
+    let branch = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+
+    let status = std::process::Command::new("git")
+        .args(["status", "--porcelain", "--short"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            let s = String::from_utf8_lossy(&o.stdout);
+            let lines: Vec<&str> = s.lines().take(10).collect();
+            if lines.is_empty() {
+                "clean".to_string()
+            } else {
+                let count = s.lines().count();
+                let shown: String = lines.join(", ");
+                if count > 10 {
+                    format!("{} (+{} more)", shown, count - 10)
+                } else {
+                    shown
+                }
+            }
+        });
+
+    match (branch, status) {
+        (Some(b), Some(s)) => format!("Git: {} | {}\n", b, s),
+        (Some(b), None) => format!("Git: {}\n", b),
+        _ => String::new(),
+    }
 }
