@@ -206,7 +206,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
                     "No MCP servers configured.\n\
                      Use /mcp-add <name> <command> [args...] to add one.\n\n\
                      Examples:\n\
-                     /mcp-add context7 npx -y @anthropic-ai/context7-mcp\n\
+                     /mcp-add context7 npx -y @upstash/context7-mcp\n\
                      /mcp-add playwright npx -y @anthropic-ai/playwright-mcp"
                         .to_string(),
                 )
@@ -228,7 +228,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             if parts.len() < 2 {
                 CommandResponse::Message(
                     "Usage: /mcp-add <name> <command> [args...]\n\
-                     Example: /mcp-add context7 npx -y @anthropic-ai/context7-mcp"
+                     Example: /mcp-add context7 npx -y @upstash/context7-mcp"
                         .to_string(),
                 )
             } else {

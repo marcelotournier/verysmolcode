@@ -72,20 +72,8 @@ impl App {
             suggestion_index: None,
         };
 
-        // Welcome message with cute ASCII art
-        app.messages.push(DisplayMessage::Assistant(
-            "\n\
-             \x20    ____   ____  _____  _____ \n\
-             \x20   |    | |    ||  ___||  ___|\n\
-             \x20   |    | | __ ||____ ||   __|\n\
-             \x20    \\__/  |____||_____||_____|\n\
-             \n\
-             \x20   VerySmolCode - Your tiny coding buddy!\n\
-             \n\
-             \x20   Type a message to get started, or /help for commands.\n\
-             \x20   Tip: Type / to see all available commands!"
-                .to_string(),
-        ));
+        // Welcome message (rendered as styled widget in ui.rs when messages are empty)
+        // No need for ASCII art in messages — the welcome screen handles it
 
         // Start the agent thread
         app.start_agent()?;

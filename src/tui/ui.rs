@@ -99,10 +99,7 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(block, area);
 
     if app.messages.is_empty() {
-        let welcome = Paragraph::new("\u{1F44B} Hey there! Type a message or /help to get started")
-            .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center);
-        f.render_widget(welcome, inner);
+        draw_welcome(f, inner);
         return;
     }
 
@@ -221,6 +218,54 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
         let visual_pos = app.input[..app.cursor_pos].chars().count();
         f.set_cursor_position(Position::new(inner.x + visual_pos as u16, inner.y));
     }
+}
+
+fn draw_welcome(f: &mut Frame, area: Rect) {
+    let logo_color = Color::Rgb(100, 160, 255);
+    let dim_color = Color::Rgb(80, 90, 120);
+    let hint_color = Color::Rgb(140, 150, 180);
+    let version = env!("CARGO_PKG_VERSION");
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" v", Style::default().fg(logo_color).bold()),
+            Span::styled("s", Style::default().fg(Color::Rgb(120, 175, 255)).bold()),
+            Span::styled("c", Style::default().fg(Color::Rgb(140, 190, 255)).bold()),
+        ]),
+        Line::from(Span::styled(
+            format!("VerySmolCode v{}", version),
+            Style::default().fg(logo_color).bold(),
+        )),
+        Line::from(Span::styled(
+            "Your tiny coding buddy",
+            Style::default().fg(dim_color).italic(),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Type a message  ", Style::default().fg(hint_color)),
+            Span::styled("|", Style::default().fg(dim_color)),
+            Span::styled("  /help  ", Style::default().fg(hint_color)),
+            Span::styled("|", Style::default().fg(dim_color)),
+            Span::styled("  /  for commands", Style::default().fg(hint_color)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Ctrl+C/D ", Style::default().fg(dim_color)),
+            Span::styled("quit", Style::default().fg(hint_color)),
+            Span::styled("  |  ", Style::default().fg(dim_color)),
+            Span::styled("Ctrl+L ", Style::default().fg(dim_color)),
+            Span::styled("clear", Style::default().fg(hint_color)),
+            Span::styled("  |  ", Style::default().fg(dim_color)),
+            Span::raw(""),
+            Span::styled("up/down ", Style::default().fg(dim_color)),
+            Span::styled("history", Style::default().fg(hint_color)),
+        ]),
+    ];
+
+    let welcome = Paragraph::new(lines).alignment(Alignment::Center);
+    f.render_widget(welcome, area);
 }
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
