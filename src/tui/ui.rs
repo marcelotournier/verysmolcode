@@ -152,10 +152,20 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
                 ]));
             }
             DisplayMessage::ToolResult(text) => {
-                lines.push(Line::from(vec![
-                    Span::styled("  \u{2705} ", Style::default().fg(TOOL_RESULT_COLOR)),
-                    Span::styled(text.as_str(), Style::default().fg(TOOL_RESULT_COLOR)),
-                ]));
+                let wrapped = wrap_text(text, width.saturating_sub(6));
+                for (i, line) in wrapped.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled("  \u{2705} ", Style::default().fg(TOOL_RESULT_COLOR)),
+                            Span::styled(line.clone(), Style::default().fg(TOOL_RESULT_COLOR)),
+                        ]));
+                    } else {
+                        lines.push(Line::from(Span::styled(
+                            format!("      {}", line),
+                            Style::default().fg(TOOL_RESULT_COLOR),
+                        )));
+                    }
+                }
             }
             DisplayMessage::Status(text) => {
                 lines.push(Line::from(Span::styled(
@@ -193,6 +203,23 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
     let paragraph = Paragraph::new(lines).scroll((scroll, 0));
 
     f.render_widget(paragraph, inner);
+
+    // Show scroll indicator when not at bottom
+    if app.scroll_offset > 0 && total_lines > visible_lines {
+        let indicator = format!(" [{}/{} lines] ", scroll + visible_lines, total_lines);
+        let x = inner.x + inner.width.saturating_sub(indicator.len() as u16 + 1);
+        let y = inner.y;
+        if x > inner.x {
+            f.render_widget(
+                Paragraph::new(indicator).style(
+                    Style::default()
+                        .fg(Color::Rgb(200, 180, 100))
+                        .bg(Color::Rgb(40, 45, 60)),
+                ),
+                Rect::new(x, y, inner.width.saturating_sub(x - inner.x), 1),
+            );
+        }
+    }
 }
 
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
