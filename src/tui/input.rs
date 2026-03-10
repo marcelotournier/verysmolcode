@@ -53,6 +53,7 @@ fn word_start(input: &str, cursor: usize) -> usize {
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     if app.is_processing {
         match key.code {
+            KeyCode::Esc => app.cancel_processing(),
             KeyCode::PageUp => app.scroll_up(),
             KeyCode::PageDown => app.scroll_down(),
             _ => {}
@@ -140,6 +141,10 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         app.input = "/".to_string();
                         app.cursor_pos = 1;
                         app.update_suggestions();
+                    }
+                    't' => {
+                        // Toggle todo popup
+                        app.todo_visible = !app.todo_visible;
                     }
                     _ => {}
                 }

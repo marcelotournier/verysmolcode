@@ -46,6 +46,11 @@ pub fn draw(f: &mut Frame, app: &App) {
     } else if !app.file_suggestions.is_empty() && !app.is_processing {
         draw_file_suggestions(f, chunks[2], app);
     }
+
+    // Draw todo popup (Ctrl+T overlay)
+    if app.todo_visible {
+        draw_todo_popup(f, size, app);
+    }
 }
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
@@ -330,7 +335,15 @@ fn draw_welcome(f: &mut Frame, area: Rect) {
 }
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
-    let left = if !app.rate_status.is_empty() {
+    let left = if !app.todo_summary.is_empty() {
+        // Show current task in status bar
+        let max_len = (area.width as usize).saturating_sub(40);
+        if app.todo_summary.len() > max_len && max_len > 3 {
+            format!("{}...", &app.todo_summary[..max_len - 3])
+        } else {
+            app.todo_summary.clone()
+        }
+    } else if !app.rate_status.is_empty() {
         app.rate_status.clone()
     } else {
         format!("VerySmolCode v{}", env!("CARGO_PKG_VERSION"))
@@ -528,6 +541,49 @@ fn draw_file_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
     }
 
     let paragraph = Paragraph::new(lines);
+    f.render_widget(paragraph, inner);
+}
+
+fn draw_todo_popup(f: &mut Frame, area: Rect, app: &App) {
+    let display = if app.todo_display.is_empty() {
+        "No tasks yet. The agent creates tasks when working on complex requests."
+    } else {
+        &app.todo_display
+    };
+
+    let lines: Vec<&str> = display.lines().collect();
+    let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(4)); // +2 for borders
+    let width = 60u16.min(area.width.saturating_sub(4));
+
+    // Center the popup
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+
+    let popup_area = Rect::new(x, y, width, height);
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Rgb(180, 160, 100)))
+        .style(Style::default().bg(Color::Rgb(25, 30, 45)))
+        .title(" Tasks (Ctrl+T to close) ")
+        .title_alignment(Alignment::Center);
+
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    let text_lines: Vec<Line> = lines
+        .iter()
+        .take(inner.height as usize)
+        .map(|line| {
+            Line::from(Span::styled(
+                *line,
+                Style::default().fg(Color::Rgb(200, 210, 230)),
+            ))
+        })
+        .collect();
+
+    let paragraph = Paragraph::new(text_lines);
     f.render_widget(paragraph, inner);
 }
 

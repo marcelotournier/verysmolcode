@@ -487,7 +487,15 @@ impl AgentLoop {
 
                 // Handle todo_update specially (needs mutable access to self.todo)
                 let result = if call.name == "todo_update" {
-                    crate::tools::todo::todo_update(&call.args, &mut self.todo)
+                    let r = crate::tools::todo::todo_update(&call.args, &mut self.todo);
+                    // Send todo status to TUI
+                    if let Some(summary) = self.todo.current_task_summary() {
+                        on_event(AgentEvent::TodoUpdate {
+                            summary,
+                            display: self.todo.to_display(),
+                        });
+                    }
+                    r
                 } else {
                     // Try MCP tools first, then built-in tools
                     self.try_execute_mcp(&call.name, &call.args)
@@ -884,6 +892,10 @@ pub enum AgentEvent {
         thinking: u32,
     },
     Status(String),
+    TodoUpdate {
+        summary: String, // One-line for status bar
+        display: String, // Full display for popup
+    },
 }
 
 /// Check if an error is transient (network issues, timeouts) and worth retrying

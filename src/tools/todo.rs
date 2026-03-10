@@ -93,6 +93,40 @@ impl TodoList {
         s
     }
 
+    /// One-line summary for status bar: shows current in-progress task or next pending
+    pub fn current_task_summary(&self) -> Option<String> {
+        // Show in-progress task first
+        if let Some(item) = self
+            .items
+            .iter()
+            .find(|i| i.status == TodoStatus::InProgress)
+        {
+            let done = self
+                .items
+                .iter()
+                .filter(|i| i.status == TodoStatus::Done)
+                .count();
+            let total = self.items.len();
+            return Some(format!("[{}/{}] {}", done, total, item.text));
+        }
+        // Fall back to next pending
+        if let Some(item) = self.items.iter().find(|i| i.status == TodoStatus::Pending) {
+            let done = self
+                .items
+                .iter()
+                .filter(|i| i.status == TodoStatus::Done)
+                .count();
+            let total = self.items.len();
+            return Some(format!("[{}/{}] {}", done, total, item.text));
+        }
+        // All done
+        let total = self.items.len();
+        if total > 0 {
+            return Some(format!("[{}/{}] All tasks done!", total, total));
+        }
+        None
+    }
+
     /// Format for display to the user
     pub fn to_display(&self) -> String {
         if self.items.is_empty() {

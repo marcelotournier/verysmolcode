@@ -343,6 +343,12 @@
 - [x] Fixed command suggestion popup scrolling: now scrolls to follow selected item
 - [x] Popup shows position indicator when list exceeds 10 items
 
+## Completed (v0.12.2) — ESC Cancel, Ctrl+T Todo Popup
+- [x] ESC key stops the agent immediately during processing
+- [x] Ctrl+T toggles a task list popup showing all todo items
+- [x] Current task displayed in status bar (shows progress: [done/total] task)
+- [x] Todo updates sent from agent loop to TUI in real-time via TodoUpdate event
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC

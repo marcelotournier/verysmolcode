@@ -58,6 +58,11 @@ pub struct App {
 
     // Google Search grounding toggle
     pub search_grounding: bool,
+
+    // Todo popup (Ctrl+T)
+    pub todo_visible: bool,
+    pub todo_summary: String, // One-line for status bar
+    pub todo_display: String, // Full display for popup
 }
 
 impl App {
@@ -92,6 +97,9 @@ impl App {
             search_query: String::new(),
             search_match: None,
             search_grounding: false,
+            todo_visible: false,
+            todo_summary: String::new(),
+            todo_display: String::new(),
         };
 
         // Welcome message (rendered as styled widget in ui.rs when messages are empty)
@@ -586,6 +594,10 @@ impl App {
                         "In:{} Out:{} Ctx:{}",
                         self.total_input_tokens, self.total_output_tokens, total
                     );
+                }
+                AgentEvent::TodoUpdate { summary, display } => {
+                    self.todo_summary = summary;
+                    self.todo_display = display;
                 }
                 AgentEvent::Status(s) => {
                     if let Some(rate) = s.strip_prefix("RATE:") {
@@ -1156,6 +1168,9 @@ impl App {
             search_query: String::new(),
             search_match: None,
             search_grounding: false,
+            todo_visible: false,
+            todo_summary: String::new(),
+            todo_display: String::new(),
         }
     }
 }
