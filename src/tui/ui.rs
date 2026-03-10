@@ -287,9 +287,12 @@ fn draw_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
         };
 
         let cmd_display = format!("{:<14}", cmd);
-        let desc_max = inner.width as usize - 15;
-        let desc_display = if desc.len() > desc_max {
-            format!("{}...", &desc[..desc_max.saturating_sub(3)])
+        let desc_max = (inner.width as usize).saturating_sub(15);
+        let desc_display = if desc_max < 4 {
+            String::new()
+        } else if desc.chars().count() > desc_max {
+            let truncated: String = desc.chars().take(desc_max - 3).collect();
+            format!("{}...", truncated)
         } else {
             desc.to_string()
         };
@@ -314,20 +317,25 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let width = width.max(20);
     let mut lines = Vec::new();
     for line in text.lines() {
-        if line.len() <= width {
+        if line.chars().count() <= width {
             lines.push(line.to_string());
         } else {
-            // Simple word wrapping
+            // Simple word wrapping using char counts for correct multi-byte handling
             let mut current = String::new();
+            let mut current_chars = 0usize;
             for word in line.split_whitespace() {
+                let word_chars = word.chars().count();
                 if current.is_empty() {
                     current = word.to_string();
-                } else if current.len() + 1 + word.len() <= width {
+                    current_chars = word_chars;
+                } else if current_chars + 1 + word_chars <= width {
                     current.push(' ');
                     current.push_str(word);
+                    current_chars += 1 + word_chars;
                 } else {
                     lines.push(current);
                     current = word.to_string();
+                    current_chars = word_chars;
                 }
             }
             if !current.is_empty() {
@@ -421,5 +429,21 @@ mod tests {
         let result = wrap_text("short\nthis is a longer line that should wrap around", 25);
         assert_eq!(result[0], "short");
         assert!(result.len() >= 3);
+    }
+
+    #[test]
+    fn test_wrap_text_multibyte_chars() {
+        // Emojis are multi-byte but each counts as 1 char for wrapping
+        let input = "\u{1F600} hello \u{1F600} world \u{1F600} test \u{1F600} more \u{1F600} words \u{1F600} here";
+        let result = wrap_text(input, 20);
+        // Should wrap based on char count, not byte count
+        for line in &result {
+            assert!(
+                line.chars().count() <= 20,
+                "Line too long by char count: '{}' = {} chars",
+                line,
+                line.chars().count()
+            );
+        }
     }
 }
