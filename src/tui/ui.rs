@@ -1076,6 +1076,151 @@ mod tests {
     }
 
     #[test]
+    fn test_format_token_count_small() {
+        assert_eq!(format_token_count(0), "0");
+        assert_eq!(format_token_count(999), "999");
+    }
+
+    #[test]
+    fn test_format_token_count_thousands() {
+        assert_eq!(format_token_count(1_000), "1.0K");
+        assert_eq!(format_token_count(12_500), "12.5K");
+        assert_eq!(format_token_count(999_999), "1000.0K");
+    }
+
+    #[test]
+    fn test_format_token_count_millions() {
+        assert_eq!(format_token_count(1_000_000), "1.0M");
+        assert_eq!(format_token_count(2_500_000), "2.5M");
+    }
+
+    #[test]
+    fn test_render_markdown_code_block() {
+        let text = "```rust\nfn main() {}\n```";
+        let lines = render_markdown(text, 80);
+        // Should have language hint line + code line (backtick lines are consumed)
+        assert!(lines.len() >= 2);
+        // First line should be the language hint
+        let first_span = &lines[0].spans[0];
+        assert!(first_span.content.contains("rust"));
+    }
+
+    #[test]
+    fn test_render_markdown_headers() {
+        let text = "# H1\n## H2\n### H3";
+        let lines = render_markdown(text, 80);
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].spans[0].content.contains("H1"));
+        assert!(lines[1].spans[0].content.contains("H2"));
+        assert!(lines[2].spans[0].content.contains("H3"));
+    }
+
+    #[test]
+    fn test_render_markdown_bullets() {
+        let text = "- Item one\n- Item two\n* Star item";
+        let lines = render_markdown(text, 80);
+        assert_eq!(lines.len(), 3);
+        for line in &lines {
+            assert!(line.spans[0].content.contains("\u{2022}"));
+        }
+    }
+
+    #[test]
+    fn test_render_markdown_numbered_list() {
+        let text = "1. First\n2. Second\n3. Third";
+        let lines = render_markdown(text, 80);
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].spans[0].content.contains("1."));
+        assert!(lines[1].spans[0].content.contains("2."));
+    }
+
+    #[test]
+    fn test_render_markdown_horizontal_rule() {
+        for rule in &["---", "***", "___"] {
+            let lines = render_markdown(rule, 80);
+            assert_eq!(lines.len(), 1);
+            assert!(lines[0].spans[0].content.contains("\u{2500}"));
+        }
+    }
+
+    #[test]
+    fn test_render_markdown_empty_text() {
+        let lines = render_markdown("", 80);
+        // Empty text should still produce at least one line
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_inline_markdown_code() {
+        let line = render_inline_markdown("Hello `code` world");
+        assert_eq!(line.spans.len(), 3);
+        assert_eq!(line.spans[0].content, "Hello ");
+        assert_eq!(line.spans[1].content, "code");
+        assert_eq!(line.spans[2].content, " world");
+    }
+
+    #[test]
+    fn test_render_inline_markdown_bold() {
+        let line = render_inline_markdown("Hello **bold** world");
+        assert_eq!(line.spans.len(), 3);
+        assert_eq!(line.spans[0].content, "Hello ");
+        assert_eq!(line.spans[1].content, "bold");
+        assert_eq!(line.spans[2].content, " world");
+    }
+
+    #[test]
+    fn test_render_inline_markdown_mixed() {
+        let line = render_inline_markdown("`code` and **bold**");
+        assert!(line.spans.len() >= 3);
+        assert_eq!(line.spans[0].content, "code");
+        assert_eq!(line.spans[1].content, " and ");
+        assert_eq!(line.spans[2].content, "bold");
+    }
+
+    #[test]
+    fn test_render_inline_markdown_no_formatting() {
+        let line = render_inline_markdown("plain text here");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content, "plain text here");
+    }
+
+    #[test]
+    fn test_build_message_lines_all_types() {
+        let messages = vec![
+            DisplayMessage::User("user msg".into()),
+            DisplayMessage::Assistant("assistant msg".into()),
+            DisplayMessage::ToolCall("tool call".into()),
+            DisplayMessage::ToolResult("tool result".into()),
+            DisplayMessage::Status("status msg".into()),
+            DisplayMessage::Error("error msg".into()),
+            DisplayMessage::ModelInfo("model info".into()),
+        ];
+        let lines = build_message_lines(&messages, 80);
+        // Each message + 1 blank line separator = 14 lines minimum
+        assert!(lines.len() >= 14);
+    }
+
+    #[test]
+    fn test_build_message_lines_empty() {
+        let lines = build_message_lines(&[], 80);
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn test_build_message_lines_tool_result_wrapping() {
+        // Use spaces so wrap_text can word-break
+        let long_result = (0..30)
+            .map(|i| format!("word{}", i))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let messages = vec![DisplayMessage::ToolResult(long_result)];
+        let lines = build_message_lines(&messages, 40);
+        // Should wrap into multiple lines (30 words at width 40 won't fit on one line)
+        // +1 blank line separator = at least 3 lines
+        assert!(lines.len() >= 3, "Expected >=3 lines, got {}", lines.len());
+    }
+
+    #[test]
     fn test_render_markdown_performance() {
         let text = "## Header\n\nSome **bold** text and `inline code`.\n\n\
                     - Bullet one\n- Bullet two\n\n\

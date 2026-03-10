@@ -34,8 +34,8 @@ pub fn web_fetch(args: &Value) -> Value {
                 .unwrap_or("text/plain")
                 .to_string();
 
-            // Only handle text content
-            if !content_type.contains("text") && !content_type.contains("json") {
+            // Only handle text-like content types
+            if !is_text_content_type(&content_type) {
                 return json!({
                     "error": format!("Cannot process content type: {}", content_type),
                     "url": url
@@ -75,6 +75,21 @@ pub fn web_fetch(args: &Value) -> Value {
         }
         Err(e) => json!({"error": format!("Failed to fetch {}: {}", url, e)}),
     }
+}
+
+/// Check if a Content-Type header indicates text-like content we can process
+fn is_text_content_type(ct: &str) -> bool {
+    let ct_lower = ct.to_ascii_lowercase();
+    // Explicit text types
+    ct_lower.contains("text")
+        || ct_lower.contains("json")
+        || ct_lower.contains("xml")
+        || ct_lower.contains("yaml")
+        || ct_lower.contains("javascript")
+        || ct_lower.contains("typescript")
+        || ct_lower.contains("csv")
+        || ct_lower.contains("markdown")
+        || ct_lower.contains("x-www-form-urlencoded")
 }
 
 /// Check if bytes at position match a tag name (case-insensitive ASCII)
@@ -323,6 +338,62 @@ mod tests {
         assert_eq!(content.len(), 19_997);
         // Verify it's valid UTF-8
         assert!(std::str::from_utf8(content.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_is_text_content_type_text() {
+        assert!(is_text_content_type("text/plain"));
+        assert!(is_text_content_type("text/html; charset=utf-8"));
+        assert!(is_text_content_type("text/css"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_json() {
+        assert!(is_text_content_type("application/json"));
+        assert!(is_text_content_type("application/json; charset=utf-8"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_xml() {
+        assert!(is_text_content_type("application/xml"));
+        assert!(is_text_content_type("text/xml"));
+        assert!(is_text_content_type("application/rss+xml"));
+        assert!(is_text_content_type("application/atom+xml"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_yaml() {
+        assert!(is_text_content_type("application/yaml"));
+        assert!(is_text_content_type("application/x-yaml"));
+        assert!(is_text_content_type("text/yaml"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_javascript() {
+        assert!(is_text_content_type("application/javascript"));
+        assert!(is_text_content_type("text/javascript"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_csv() {
+        assert!(is_text_content_type("text/csv"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_binary_rejected() {
+        assert!(!is_text_content_type("application/octet-stream"));
+        assert!(!is_text_content_type("image/png"));
+        assert!(!is_text_content_type("application/pdf"));
+        assert!(!is_text_content_type("video/mp4"));
+        assert!(!is_text_content_type("audio/mpeg"));
+        assert!(!is_text_content_type("application/zip"));
+    }
+
+    #[test]
+    fn test_is_text_content_type_case_insensitive() {
+        assert!(is_text_content_type("Application/JSON"));
+        assert!(is_text_content_type("TEXT/HTML"));
+        assert!(is_text_content_type("Application/XML"));
     }
 
     #[test]
