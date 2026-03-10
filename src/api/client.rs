@@ -1,7 +1,7 @@
-use std::env;
-use std::thread;
 use crate::api::models::{ModelId, ModelRouter};
 use crate::api::types::*;
+use std::env;
+use std::thread;
 
 const API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -14,8 +14,8 @@ pub struct GeminiClient {
 
 impl GeminiClient {
     pub fn new() -> Result<Self, String> {
-        let api_key = env::var("GEMINI_API_KEY")
-            .map_err(|_| "GEMINI_API_KEY not set".to_string())?;
+        let api_key =
+            env::var("GEMINI_API_KEY").map_err(|_| "GEMINI_API_KEY not set".to_string())?;
         Ok(Self {
             api_key,
             router: ModelRouter::new(),
@@ -45,15 +45,15 @@ impl GeminiClient {
             self.api_key,
         );
 
-        let body = serde_json::to_value(request)
-            .map_err(|e| format!("Serialize error: {}", e))?;
+        let body = serde_json::to_value(request).map_err(|e| format!("Serialize error: {}", e))?;
 
         let resp = ureq::post(&url)
             .set("Content-Type", "application/json")
             .send_json(body)
             .map_err(|e| format!("API request failed: {}", e))?;
 
-        let response: GenerateResponse = resp.into_json()
+        let response: GenerateResponse = resp
+            .into_json()
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
         // Check for API errors
@@ -80,8 +80,9 @@ impl GeminiClient {
         request: &GenerateRequest,
         prefer_smart: bool,
     ) -> Result<(GenerateResponse, ModelId), String> {
-        let model = self.router.pick_model(prefer_smart)
-            .ok_or_else(|| "All models exhausted for today. Please try again tomorrow.".to_string())?;
+        let model = self.router.pick_model(prefer_smart).ok_or_else(|| {
+            "All models exhausted for today. Please try again tomorrow.".to_string()
+        })?;
 
         match self.generate(model, request) {
             Ok(resp) => Ok((resp, model)),

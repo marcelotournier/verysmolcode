@@ -1,7 +1,7 @@
+use crate::agent::loop_runner::AgentEvent;
+use crate::agent::AgentLoop;
 use std::sync::mpsc;
 use std::thread;
-use crate::agent::AgentLoop;
-use crate::agent::loop_runner::AgentEvent;
 
 #[derive(Debug, Clone)]
 pub enum DisplayMessage {
@@ -57,7 +57,8 @@ impl App {
         // Welcome message
         app.messages.push(DisplayMessage::Assistant(
             "Welcome to VerySmolCode! I'm your lightweight coding assistant powered by Gemini.\n\
-             Type /help for available commands. Start typing to ask me anything!".to_string()
+             Type /help for available commands. Start typing to ask me anything!"
+                .to_string(),
         ));
 
         // Start the agent thread
@@ -96,9 +97,10 @@ impl App {
                 }
 
                 // Send rate limit status
-                let _ = event_tx.send(AgentEvent::Status(
-                    format!("RATE:{}", agent.rate_limit_status())
-                ));
+                let _ = event_tx.send(AgentEvent::Status(format!(
+                    "RATE:{}",
+                    agent.rate_limit_status()
+                )));
 
                 let _ = done_tx.send(());
             }
@@ -204,9 +206,8 @@ impl App {
                     } else {
                         args.to_string()
                     };
-                    self.messages.push(DisplayMessage::ToolCall(
-                        format!("{}({})", name, args_str)
-                    ));
+                    self.messages
+                        .push(DisplayMessage::ToolCall(format!("{}({})", name, args_str)));
                     needs_scroll = true;
                 }
                 AgentEvent::ToolResult { name, result } => {
@@ -250,7 +251,8 @@ impl App {
     pub fn cancel_processing(&mut self) {
         self.is_processing = false;
         self.model_name = "Ready".to_string();
-        self.messages.push(DisplayMessage::Status("Cancelled.".to_string()));
+        self.messages
+            .push(DisplayMessage::Status("Cancelled.".to_string()));
     }
 
     pub fn clear_screen(&mut self) {
@@ -314,9 +316,15 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
     match name {
         "read_file" => {
             let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
-            let truncated = result.get("truncated").and_then(|v| v.as_bool()).unwrap_or(false);
+            let truncated = result
+                .get("truncated")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if truncated {
-                let bytes = result.get("total_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                let bytes = result
+                    .get("total_bytes")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
                 format!("[read_file] {} ({} bytes, truncated)", path, bytes)
             } else {
                 format!("[read_file] {}", path)
@@ -324,7 +332,10 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
         }
         "write_file" => {
             let path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
-            let bytes = result.get("bytes_written").and_then(|v| v.as_u64()).unwrap_or(0);
+            let bytes = result
+                .get("bytes_written")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             format!("[write_file] {} ({} bytes)", path, bytes)
         }
         "edit_file" => {
@@ -332,7 +343,10 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
             format!("[edit_file] {}", path)
         }
         "grep_search" => {
-            let matches = result.get("total_matches").and_then(|v| v.as_u64()).unwrap_or(0);
+            let matches = result
+                .get("total_matches")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             format!("[grep] {} matches found", matches)
         }
         "git_status" | "git_diff" | "git_log" | "git_commit" | "git_push" | "git_pull" => {
@@ -345,13 +359,23 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
             format!("[{}] {}", name, summary)
         }
         "run_command" => {
-            let success = result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
-            let exit_code = result.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(-1);
+            let success = result
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let exit_code = result
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(-1);
             if success {
                 format!("[cmd] Exit code: {}", exit_code)
             } else {
                 let stderr = result.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
-                let summary = if stderr.len() > 80 { &stderr[..77] } else { stderr };
+                let summary = if stderr.len() > 80 {
+                    &stderr[..77]
+                } else {
+                    stderr
+                };
                 format!("[cmd] Failed ({}): {}", exit_code, summary)
             }
         }

@@ -1,5 +1,7 @@
-pub mod api;
+#![allow(dead_code)]
+
 pub mod agent;
+pub mod api;
 pub mod config;
 pub mod tools;
 pub mod tui;
@@ -14,9 +16,7 @@ mod verysmolcode {
 
     #[pyfunction]
     fn run() -> PyResult<()> {
-        crate::tui::run().map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(e)
-        })
+        crate::tui::run().map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
     }
 
     #[pyfunction]

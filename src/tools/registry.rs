@@ -1,6 +1,6 @@
+use crate::api::types::{FunctionDecl, ToolDeclaration};
+use crate::tools::{file_ops, git, grep};
 use serde_json::{json, Value};
-use crate::api::types::{ToolDeclaration, FunctionDecl};
-use crate::tools::{file_ops, grep, git};
 
 /// Execute a tool by name with the given arguments
 pub fn execute_tool(name: &str, args: &Value) -> Value {

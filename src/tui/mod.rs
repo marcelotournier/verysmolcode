@@ -1,16 +1,16 @@
 pub mod app;
-pub mod ui;
-pub mod input;
 pub mod commands;
+pub mod input;
+pub mod ui;
 
-use std::io;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::prelude::*;
 use ratatui::backend::CrosstermBackend;
+use ratatui::prelude::*;
+use std::io;
 
 use app::App;
 
@@ -21,8 +21,8 @@ pub fn run() -> Result<(), String> {
     execute!(stdout, EnterAlternateScreen)
         .map_err(|e| format!("Failed to enter alternate screen: {}", e))?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)
-        .map_err(|e| format!("Failed to create terminal: {}", e))?;
+    let mut terminal =
+        Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {}", e))?;
 
     // Create app
     let mut app = App::new()?;
@@ -43,7 +43,8 @@ fn run_app(
     app: &mut App,
 ) -> Result<(), String> {
     loop {
-        terminal.draw(|f| ui::draw(f, app))
+        terminal
+            .draw(|f| ui::draw(f, app))
             .map_err(|e| format!("Draw error: {}", e))?;
 
         // Poll for events with a timeout so we can update the UI

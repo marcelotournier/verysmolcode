@@ -32,11 +32,9 @@ pub fn handle_command(input: &str) -> CommandResponse {
         }
         "/quit" | "/q" | "/exit" => CommandResponse::Quit,
         "/clear" => CommandResponse::Clear,
-        "/status" => {
-            CommandResponse::SendToAgent(
-                "Show me the current rate limit status and token usage.".to_string()
-            )
-        }
+        "/status" => CommandResponse::SendToAgent(
+            "Show me the current rate limit status and token usage.".to_string(),
+        ),
         "/config" => {
             let config = crate::config::Config::load();
             let msg = format!(
@@ -50,13 +48,15 @@ pub fn handle_command(input: &str) -> CommandResponse {
                 config.max_conversation_tokens,
                 config.temperature,
                 config.auto_compact_threshold,
-                if config.safety_enabled { "enabled" } else { "disabled" },
+                if config.safety_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                },
             );
             CommandResponse::Message(msg)
         }
-        "/compact" => {
-            CommandResponse::Message("Conversation compacted.".to_string())
-        }
+        "/compact" => CommandResponse::Message("Conversation compacted.".to_string()),
         "/model" => {
             let msg = "Available models (Gemini Free Tier):\n\n\
                        Gemini 2.5 Pro      - 5 RPM, 25 RPD  (complex tasks)\n\
@@ -66,15 +66,14 @@ pub fn handle_command(input: &str) -> CommandResponse {
                        Falls back to simpler models when rate limits are hit.";
             CommandResponse::Message(msg.to_string())
         }
-        "/version" => {
-            CommandResponse::Message(format!(
-                "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
-                env!("CARGO_PKG_VERSION")
-            ))
-        }
-        _ => {
-            CommandResponse::Message(format!("Unknown command: {}. Type /help for available commands.", cmd))
-        }
+        "/version" => CommandResponse::Message(format!(
+            "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
+            env!("CARGO_PKG_VERSION")
+        )),
+        _ => CommandResponse::Message(format!(
+            "Unknown command: {}. Type /help for available commands.",
+            cmd
+        )),
     }
 }
 

@@ -8,6 +8,7 @@ pub enum ModelTier {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)]
 pub enum ModelId {
     Gemini25Pro,
     Gemini25Flash,
@@ -46,17 +47,29 @@ impl ModelId {
 
 #[derive(Debug, Clone)]
 pub struct RateLimit {
-    pub rpm: u32,        // requests per minute
-    pub rpd: u32,        // requests per day
-    pub tpm: u32,        // tokens per minute
+    pub rpm: u32, // requests per minute
+    pub rpd: u32, // requests per day
+    pub tpm: u32, // tokens per minute
 }
 
 impl RateLimit {
     pub fn for_model(model: ModelId) -> Self {
         match model.tier() {
-            ModelTier::Pro => RateLimit { rpm: 5, rpd: 25, tpm: 250_000 },
-            ModelTier::Flash => RateLimit { rpm: 10, rpd: 250, tpm: 1_000_000 },
-            ModelTier::FlashLite => RateLimit { rpm: 15, rpd: 1000, tpm: 1_000_000 },
+            ModelTier::Pro => RateLimit {
+                rpm: 5,
+                rpd: 25,
+                tpm: 250_000,
+            },
+            ModelTier::Flash => RateLimit {
+                rpm: 10,
+                rpd: 250,
+                tpm: 1_000_000,
+            },
+            ModelTier::FlashLite => RateLimit {
+                rpm: 15,
+                rpd: 1000,
+                tpm: 1_000_000,
+            },
         }
     }
 }
@@ -83,8 +96,10 @@ impl RateLimiter {
         let now = Instant::now();
         let one_minute = Duration::from_secs(60);
         let one_day = Duration::from_secs(86400);
-        self.minute_requests.retain(|t| now.duration_since(*t) < one_minute);
-        self.day_requests.retain(|t| now.duration_since(*t) < one_day);
+        self.minute_requests
+            .retain(|t| now.duration_since(*t) < one_minute);
+        self.day_requests
+            .retain(|t| now.duration_since(*t) < one_day);
     }
 
     pub fn can_request(&mut self) -> bool {
@@ -116,7 +131,9 @@ impl RateLimiter {
 
     pub fn remaining_today(&mut self) -> u32 {
         self.cleanup();
-        self.limits.rpd.saturating_sub(self.day_requests.len() as u32)
+        self.limits
+            .rpd
+            .saturating_sub(self.day_requests.len() as u32)
     }
 
     pub fn model(&self) -> ModelId {
@@ -130,6 +147,12 @@ pub struct ModelRouter {
     pub pro: RateLimiter,
     pub flash: RateLimiter,
     pub flash_lite: RateLimiter,
+}
+
+impl Default for ModelRouter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ModelRouter {

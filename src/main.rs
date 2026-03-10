@@ -1,5 +1,7 @@
-mod api;
+#![allow(dead_code)]
+
 mod agent;
+mod api;
 mod config;
 mod tools;
 mod tui;

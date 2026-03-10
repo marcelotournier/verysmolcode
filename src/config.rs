@@ -50,7 +50,8 @@ impl Config {
     pub fn save(&self) -> Result<(), String> {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
-        let data = serde_json::to_string_pretty(self).map_err(|e| format!("Serialize error: {}", e))?;
+        let data =
+            serde_json::to_string_pretty(self).map_err(|e| format!("Serialize error: {}", e))?;
         std::fs::write(Self::config_path(), data).map_err(|e| format!("Write error: {}", e))?;
         Ok(())
     }

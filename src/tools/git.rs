@@ -28,7 +28,10 @@ pub fn git_status(_args: &Value) -> Value {
 }
 
 pub fn git_diff(args: &Value) -> Value {
-    let staged = args.get("staged").and_then(|v| v.as_bool()).unwrap_or(false);
+    let staged = args
+        .get("staged")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if staged {
         run_git(&["diff", "--cached"])
     } else {
@@ -49,7 +52,10 @@ pub fn git_commit(args: &Value) -> Value {
     };
 
     // Stage all changes first if requested
-    let add_all = args.get("add_all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let add_all = args
+        .get("add_all")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if add_all {
         run_git(&["add", "-A"]);
     }
@@ -85,7 +91,10 @@ pub fn git_checkout(args: &Value) -> Value {
 }
 
 pub fn git_push(args: &Value) -> Value {
-    let remote = args.get("remote").and_then(|v| v.as_str()).unwrap_or("origin");
+    let remote = args
+        .get("remote")
+        .and_then(|v| v.as_str())
+        .unwrap_or("origin");
     let branch = args.get("branch").and_then(|v| v.as_str());
 
     match branch {
@@ -95,7 +104,10 @@ pub fn git_push(args: &Value) -> Value {
 }
 
 pub fn git_pull(args: &Value) -> Value {
-    let remote = args.get("remote").and_then(|v| v.as_str()).unwrap_or("origin");
+    let remote = args
+        .get("remote")
+        .and_then(|v| v.as_str())
+        .unwrap_or("origin");
     run_git(&["pull", remote])
 }
 
@@ -106,19 +118,23 @@ pub fn run_shell(args: &Value) -> Value {
     };
 
     // Safety: block dangerous commands
-    let blocked = ["rm -rf /", "rm -rf ~", "mkfs", "dd if=", ":(){ :|:& };:",
-                   "chmod -R 777 /", "sudo rm", "> /dev/sda"];
+    let blocked = [
+        "rm -rf /",
+        "rm -rf ~",
+        "mkfs",
+        "dd if=",
+        ":(){ :|:& };:",
+        "chmod -R 777 /",
+        "sudo rm",
+        "> /dev/sda",
+    ];
     for b in &blocked {
         if command.contains(b) {
             return json!({"error": format!("Blocked dangerous command: {}", b)});
         }
     }
 
-    match Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()
-    {
+    match Command::new("sh").arg("-c").arg(command).output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);

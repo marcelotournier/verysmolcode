@@ -1,6 +1,6 @@
+use crate::tui::app::{App, DisplayMessage};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use crate::tui::app::{App, DisplayMessage};
 
 // Color scheme - comfortable blue tones for tmux
 const BG_COLOR: Color = Color::Rgb(15, 17, 26);
@@ -22,10 +22,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),       // Header
-            Constraint::Min(1),          // Messages
-            Constraint::Length(3),       // Input
-            Constraint::Length(1),       // Status bar
+            Constraint::Length(3), // Header
+            Constraint::Min(1),    // Messages
+            Constraint::Length(3), // Input
+            Constraint::Length(1), // Status bar
         ])
         .split(size);
 
@@ -54,7 +54,9 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         let idx = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() / 300) as usize % frames.len();
+            .as_millis()
+            / 300) as usize
+            % frames.len();
         format!("Working{}", frames[idx])
     } else {
         "Ready".to_string()
@@ -101,9 +103,10 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
             DisplayMessage::Assistant(text) => {
                 // Word-wrap long responses
                 for line in wrap_text(text, width.saturating_sub(2)) {
-                    lines.push(Line::from(
-                        Span::styled(line, Style::default().fg(ASSISTANT_COLOR))
-                    ));
+                    lines.push(Line::from(Span::styled(
+                        line,
+                        Style::default().fg(ASSISTANT_COLOR),
+                    )));
                 }
             }
             DisplayMessage::ToolCall(text) => {
@@ -119,25 +122,22 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
                 ]));
             }
             DisplayMessage::Status(text) => {
-                lines.push(Line::from(
-                    Span::styled(
-                        format!("  {}", text),
-                        Style::default().fg(STATUS_COLOR).italic(),
-                    )
-                ));
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", text),
+                    Style::default().fg(STATUS_COLOR).italic(),
+                )));
             }
             DisplayMessage::Error(text) => {
-                lines.push(Line::from(
-                    Span::styled(
-                        format!("Error: {}", text),
-                        Style::default().fg(ERROR_COLOR).bold(),
-                    )
-                ));
+                lines.push(Line::from(Span::styled(
+                    format!("Error: {}", text),
+                    Style::default().fg(ERROR_COLOR).bold(),
+                )));
             }
             DisplayMessage::ModelInfo(text) => {
-                lines.push(Line::from(
-                    Span::styled(text.as_str(), Style::default().fg(ACCENT_COLOR))
-                ));
+                lines.push(Line::from(Span::styled(
+                    text.as_str(),
+                    Style::default().fg(ACCENT_COLOR),
+                )));
             }
         }
         // Add spacing between messages
@@ -154,8 +154,7 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
         max_scroll
     };
 
-    let paragraph = Paragraph::new(lines)
-        .scroll((scroll, 0));
+    let paragraph = Paragraph::new(lines).scroll((scroll, 0));
 
     f.render_widget(paragraph, inner);
 }
@@ -188,16 +187,12 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
         Style::default().fg(Color::White)
     };
 
-    let input = Paragraph::new(display_text)
-        .style(style);
+    let input = Paragraph::new(display_text).style(style);
     f.render_widget(input, inner);
 
     // Show cursor
     if !app.is_processing {
-        f.set_cursor_position(Position::new(
-            inner.x + app.cursor_pos as u16,
-            inner.y,
-        ));
+        f.set_cursor_position(Position::new(inner.x + app.cursor_pos as u16, inner.y));
     }
 }
 
@@ -218,10 +213,11 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let padding = width.saturating_sub(left.len() + right.len());
     let status = format!("{}{:>pad$}", left, right, pad = padding + right.len());
 
-    let bar = Paragraph::new(status)
-        .style(Style::default()
+    let bar = Paragraph::new(status).style(
+        Style::default()
             .fg(Color::Rgb(160, 170, 190))
-            .bg(Color::Rgb(30, 35, 50)));
+            .bg(Color::Rgb(30, 35, 50)),
+    );
 
     f.render_widget(bar, area);
 }

@@ -133,8 +133,12 @@ pub fn list_dir(args: &Value) -> Value {
             items.sort_by(|a, b| {
                 let a_dir = a["is_dir"].as_bool().unwrap_or(false);
                 let b_dir = b["is_dir"].as_bool().unwrap_or(false);
-                b_dir.cmp(&a_dir)
-                    .then_with(|| a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or("")))
+                b_dir.cmp(&a_dir).then_with(|| {
+                    a["name"]
+                        .as_str()
+                        .unwrap_or("")
+                        .cmp(b["name"].as_str().unwrap_or(""))
+                })
             });
             json!({
                 "path": path.display().to_string(),
@@ -158,8 +162,15 @@ fn check_safe_path(path: &Path) -> Result<(), String> {
     let path_str = path.to_string_lossy();
 
     // Block dangerous system paths
-    let blocked = ["/etc/passwd", "/etc/shadow", "/etc/sudoers",
-                   "/boot/", "/proc/", "/sys/", "/dev/"];
+    let blocked = [
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/sudoers",
+        "/boot/",
+        "/proc/",
+        "/sys/",
+        "/dev/",
+    ];
     for b in &blocked {
         if path_str.starts_with(b) {
             return Err(format!("Access denied: {} is a protected path", b));

@@ -1,7 +1,7 @@
-use crate::api::client::{GeminiClient, build_request, extract_response};
+use crate::api::client::{build_request, extract_response, GeminiClient};
 use crate::api::types::*;
 use crate::config::Config;
-use crate::tools::ToolRegistry;
+use crate::tools::registry::ToolRegistry;
 
 /// Represents a message in the conversation
 #[derive(Debug, Clone)]
@@ -33,11 +33,7 @@ impl AgentLoop {
 
     /// Process a user message and return agent responses
     /// The callback is called for each response chunk (text, tool use, etc.)
-    pub fn process_message<F>(
-        &mut self,
-        user_input: &str,
-        mut on_event: F,
-    ) -> Result<(), String>
+    pub fn process_message<F>(&mut self, user_input: &str, mut on_event: F) -> Result<(), String>
     where
         F: FnMut(AgentEvent),
     {
@@ -55,12 +51,17 @@ impl AgentLoop {
         for iteration in 0..max_iterations {
             // Check if we need to compact conversation
             if self.total_conversation_tokens > self.config.auto_compact_threshold {
-                on_event(AgentEvent::Status("Compacting conversation to save tokens...".to_string()));
+                on_event(AgentEvent::Status(
+                    "Compacting conversation to save tokens...".to_string(),
+                ));
                 self.compact_conversation();
             }
 
             // Pick model
-            let model = self.client.router.pick_model(prefer_smart && iteration == 0)
+            let model = self
+                .client
+                .router
+                .pick_model(prefer_smart && iteration == 0)
                 .ok_or_else(|| "All models exhausted for today".to_string())?;
 
             on_event(AgentEvent::ModelSwitch(model.display_name().to_string()));
@@ -155,9 +156,23 @@ impl AgentLoop {
     /// Determine if a task is complex enough to warrant Pro model
     fn is_complex_task(&self, input: &str) -> bool {
         let complex_keywords = [
-            "refactor", "architect", "design", "complex", "debug", "fix bug",
-            "optimize", "review", "analyze", "explain", "why", "implement",
-            "create", "build", "full", "entire", "complete",
+            "refactor",
+            "architect",
+            "design",
+            "complex",
+            "debug",
+            "fix bug",
+            "optimize",
+            "review",
+            "analyze",
+            "explain",
+            "why",
+            "implement",
+            "create",
+            "build",
+            "full",
+            "entire",
+            "complete",
         ];
         let input_lower = input.to_lowercase();
         let has_complex_keyword = complex_keywords.iter().any(|k| input_lower.contains(k));
@@ -218,10 +233,21 @@ impl AgentLoop {
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     Text(String),
-    ToolCall { name: String, args: serde_json::Value },
-    ToolResult { name: String, result: serde_json::Value },
+    ToolCall {
+        name: String,
+        args: serde_json::Value,
+    },
+    ToolResult {
+        name: String,
+        result: serde_json::Value,
+    },
     ModelSwitch(String),
-    TokenUpdate { input: u32, output: u32, total: u32, thinking: u32 },
+    TokenUpdate {
+        input: u32,
+        output: u32,
+        total: u32,
+        thinking: u32,
+    },
     Status(String),
 }
 
@@ -231,10 +257,21 @@ fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
         "run_command" => {
             if let Some(cmd) = args.get("command").and_then(|v| v.as_str()) {
                 let dangerous = [
-                    "rm -rf", "rm -r /", "dd if=", "mkfs", "format",
-                    "shutdown", "reboot", "init 0", "init 6",
-                    "chmod 777", "chmod -R 777", "> /dev/",
-                    "curl | sh", "wget | sh", "curl | bash",
+                    "rm -rf",
+                    "rm -r /",
+                    "dd if=",
+                    "mkfs",
+                    "format",
+                    "shutdown",
+                    "reboot",
+                    "init 0",
+                    "init 6",
+                    "chmod 777",
+                    "chmod -R 777",
+                    "> /dev/",
+                    "curl | sh",
+                    "wget | sh",
+                    "curl | bash",
                 ];
                 return dangerous.iter().any(|d| cmd.contains(d));
             }
@@ -243,8 +280,8 @@ fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
         "write_file" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 let dangerous_paths = [
-                    "/etc/", "/boot/", "/usr/", "/bin/", "/sbin/",
-                    "/lib/", "/proc/", "/sys/", "/dev/",
+                    "/etc/", "/boot/", "/usr/", "/bin/", "/sbin/", "/lib/", "/proc/", "/sys/",
+                    "/dev/",
                 ];
                 return dangerous_paths.iter().any(|d| path.starts_with(d));
             }

@@ -10,7 +10,10 @@ pub fn grep_search(args: &Value) -> Value {
     };
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
     let include = args.get("include").and_then(|v| v.as_str());
-    let max_results: usize = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+    let max_results: usize = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(50) as usize;
 
     let search_path = if Path::new(path).is_absolute() {
         PathBuf::from(path)
@@ -54,8 +57,12 @@ fn search_recursive(
         let name = entry.file_name().to_string_lossy().to_string();
 
         // Skip hidden dirs and common non-code directories
-        if name.starts_with('.') || name == "node_modules" || name == "target"
-            || name == "__pycache__" || name == "venv" || name == ".git"
+        if name.starts_with('.')
+            || name == "node_modules"
+            || name == "target"
+            || name == "__pycache__"
+            || name == "venv"
+            || name == ".git"
         {
             continue;
         }
@@ -96,10 +103,10 @@ fn search_recursive(
 }
 
 fn is_likely_binary(path: &Path) -> bool {
-    let binary_exts = ["png", "jpg", "jpeg", "gif", "bmp", "ico", "pdf",
-                       "zip", "tar", "gz", "bz2", "xz", "7z",
-                       "exe", "dll", "so", "dylib", "o", "a",
-                       "wasm", "class", "pyc", "pyo"];
+    let binary_exts = [
+        "png", "jpg", "jpeg", "gif", "bmp", "ico", "pdf", "zip", "tar", "gz", "bz2", "xz", "7z",
+        "exe", "dll", "so", "dylib", "o", "a", "wasm", "class", "pyc", "pyo",
+    ];
 
     if let Some(ext) = path.extension() {
         let ext = ext.to_string_lossy().to_lowercase();
@@ -124,7 +131,10 @@ pub fn find_files(args: &Value) -> Value {
         None => return json!({"error": "Missing 'pattern' argument"}),
     };
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-    let max_results: usize = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+    let max_results: usize = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(100) as usize;
 
     let search_path = if Path::new(path).is_absolute() {
         PathBuf::from(path)
