@@ -270,6 +270,46 @@ fn test_function_call_response_deserialization() {
     }
 }
 
+#[test]
+fn test_model_router_wait_for_model() {
+    let mut router = ModelRouter::new();
+
+    // Should return zero wait initially
+    let wait = router.wait_for_model(ModelId::Gemini3Flash);
+    assert_eq!(wait, Some(std::time::Duration::ZERO));
+
+    // Exhaust daily limit (250 for Flash)
+    for _ in 0..250 {
+        router.g3_flash.record_request();
+    }
+
+    // Should return None (daily exhausted)
+    let wait = router.wait_for_model(ModelId::Gemini3Flash);
+    assert!(wait.is_none());
+}
+
+#[test]
+fn test_model_router_exhaust_all_pro() {
+    let mut router = ModelRouter::new();
+
+    // Exhaust both Pro models
+    for _ in 0..25 {
+        router.g3_pro.record_request();
+        router.pro.record_request();
+    }
+
+    // Should not pick Pro for smart tasks, should fall back to Flash
+    let model = router.pick_model(true);
+    assert!(model.is_some());
+    let picked = model.unwrap();
+    assert!(
+        picked == ModelId::Gemini3Flash
+            || picked == ModelId::Gemini25Flash
+            || picked == ModelId::Gemini31FlashLite
+            || picked == ModelId::Gemini25FlashLite
+    );
+}
+
 // -- build_request tests --
 
 #[test]

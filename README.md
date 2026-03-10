@@ -9,7 +9,7 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 - **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading (18 tools)
 - **MCP Support**: Connect to MCP servers (context7, playwright, etc.) via `/mcp-add` — tools are live in the agent loop
 - **Critic Verification**: After tool use, a lightweight model verifies the work was done correctly
-- **Token-Aware**: Conversation compaction, thinking budget control, and rate limit tracking
+- **Token-Aware**: `/tokens` dashboard, `/fast`/`/smart` model selection, rate limit warnings, conversation compaction, and thinking budget control
 - **Safe by Default**: Blocks destructive operations, validates paths, and prevents dangerous commands
 - **Lightweight**: ~5MB binary, minimal memory footprint, runs on Raspberry Pi 3
 
@@ -54,20 +54,24 @@ vsc
 
 ## Commands
 
-| Command    | Description                                      |
-|------------|--------------------------------------------------|
-| `/help`    | Show available commands and keybindings           |
-| `/plan`    | Toggle planning mode (read-only, Pro model)       |
-| `/model`   | Show available models and rate limits             |
-| `/config`  | Show current configuration                        |
-| `/status`  | Show rate limits and token usage                  |
-| `/compact` | Manually compact conversation to save tokens      |
-| `/mcp`     | List configured MCP servers                       |
-| `/mcp-add` | Add MCP server: `/mcp-add name command [args]`   |
-| `/mcp-rm`  | Remove MCP server: `/mcp-rm name`                |
-| `/version` | Show version information                          |
-| `/clear`   | Clear conversation and screen                     |
-| `/quit`    | Exit VerySmolCode                                 |
+| Command      | Description                                      |
+|--------------|--------------------------------------------------|
+| `/help`      | Show available commands and keybindings           |
+| `/fast`      | Use Flash models for next message (saves budget)  |
+| `/smart`     | Use Pro models for next message (best quality)    |
+| `/plan`      | Toggle planning mode (read-only, Pro model)       |
+| `/tokens`    | Show detailed token usage and rate limits         |
+| `/status`    | Show rate limits and token usage                  |
+| `/model`     | Show available models and rate limits             |
+| `/config`    | Show current configuration                        |
+| `/config set`| Edit config: `/config set temperature 0.5`       |
+| `/compact`   | Manually compact conversation to save tokens      |
+| `/mcp`       | List configured MCP servers                       |
+| `/mcp-add`   | Add MCP server: `/mcp-add name command [args]`   |
+| `/mcp-rm`    | Remove MCP server: `/mcp-rm name`                |
+| `/version`   | Show version information                          |
+| `/clear`     | Clear conversation and screen                     |
+| `/quit`      | Exit VerySmolCode                                 |
 
 ## Keybindings
 
@@ -97,8 +101,16 @@ VerySmolCode automatically manages rate limits across all 6 models independently
 
 ## Configuration
 
-Config file is stored at `~/.config/verysmolcode/config.json`:
+Config file is stored at `~/.config/verysmolcode/config.json`. You can edit it directly or use `/config set` in the TUI:
 
+```bash
+/config set temperature 0.5     # Lower = more focused, higher = more creative
+/config set max_tokens 2048     # Limit response length to save tokens
+/config set compact_threshold 16000  # Compact conversation earlier
+/config set safety off          # Disable safety checks (not recommended)
+```
+
+Default values:
 ```json
 {
   "max_tokens_per_response": 4096,
@@ -141,7 +153,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (90 tests)
+# Unit tests (101 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)
