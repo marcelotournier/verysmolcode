@@ -38,6 +38,10 @@ pub fn read_file(args: &Value) -> Value {
     }
 }
 
+/// Maximum file size the agent is allowed to write (5MB).
+/// Prevents disk exhaustion on constrained devices like RPi3.
+const MAX_FILE_WRITE_BYTES: usize = 5_000_000;
+
 /// Write content to a file (creates directories if needed)
 pub fn write_file(args: &Value) -> Value {
     let path = match args.get("path").and_then(|v| v.as_str()) {
@@ -48,6 +52,14 @@ pub fn write_file(args: &Value) -> Value {
         Some(c) => c,
         None => return json!({"error": "Missing 'content' argument"}),
     };
+
+    // Reject oversized writes to protect disk space
+    if content.len() > MAX_FILE_WRITE_BYTES {
+        return json!({"error": format!(
+            "Content too large ({} bytes). Maximum write size is {} bytes (5MB).",
+            content.len(), MAX_FILE_WRITE_BYTES
+        )});
+    }
 
     let path = resolve_path(path);
 
@@ -100,7 +112,17 @@ pub fn edit_file(args: &Value) -> Value {
                 return json!({"error": "old_string not found in file"});
             }
             if count > 1 {
-                return json!({"error": format!("old_string found {} times - must be unique. Provide more context.", count)});
+                // Show line numbers of each match so the model can provide more context
+                let match_lines: Vec<usize> = content
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, line)| line.contains(old_string))
+                    .map(|(i, _)| i + 1)
+                    .collect();
+                return json!({
+                    "error": format!("old_string found {} times - must be unique. Provide more surrounding context.", count),
+                    "match_lines": match_lines
+                });
             }
 
             let new_content = content.replacen(old_string, new_string, 1);
@@ -365,6 +387,20 @@ mod tests {
         fs::write(path, "hello hello world").unwrap();
         let result = edit_file(&json!({"path": path, "old_string": "hello", "new_string": "hi"}));
         assert!(result["error"].as_str().unwrap().contains("found 2 times"));
+        // Should include line numbers of matches
+        assert!(result.get("match_lines").is_some());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_edit_file_ambiguous_multiline() {
+        let path = "/tmp/vsc_test_edit_ambiguous_ml.txt";
+        fs::write(path, "foo\nbar\nfoo\nbaz").unwrap();
+        let result = edit_file(&json!({"path": path, "old_string": "foo", "new_string": "qux"}));
+        let lines = result["match_lines"].as_array().unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].as_u64().unwrap(), 1);
+        assert_eq!(lines[1].as_u64().unwrap(), 3);
         let _ = fs::remove_file(path);
     }
 
@@ -458,5 +494,22 @@ mod tests {
     fn test_write_file_missing_content() {
         let result = write_file(&json!({"path": "/tmp/test.txt"}));
         assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_write_file_size_limit() {
+        // Content over 5MB should be rejected
+        let big = "x".repeat(5_000_001);
+        let result = write_file(&json!({"path": "/tmp/vsc_too_big.txt", "content": big}));
+        assert!(result["error"].as_str().unwrap().contains("too large"));
+    }
+
+    #[test]
+    fn test_write_file_under_size_limit() {
+        let path = "/tmp/vsc_test_size_ok.txt";
+        let content = "x".repeat(1000);
+        let result = write_file(&json!({"path": path, "content": content}));
+        assert_eq!(result["success"].as_bool(), Some(true));
+        let _ = fs::remove_file(path);
     }
 }

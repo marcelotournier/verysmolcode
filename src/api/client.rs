@@ -57,9 +57,13 @@ impl GeminiClient {
             .into_json()
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        // Check for API errors
+        // Check for API errors (cascade: message → status → code → unknown)
         if let Some(ref err) = response.error {
-            let msg = err.message.as_deref().unwrap_or("Unknown API error");
+            let msg = err
+                .message
+                .as_deref()
+                .or(err.status.as_deref())
+                .unwrap_or("Unknown API error");
             return Err(format!("API error: {}", msg));
         }
 
