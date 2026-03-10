@@ -264,13 +264,17 @@ pub fn get_tool_declarations() -> Vec<ToolDeclaration> {
             },
             FunctionDecl {
                 name: "run_command".to_string(),
-                description: "Run a shell command and return its output. Use for tasks like running tests, installing packages, or checking system state.".to_string(),
+                description: "Run a shell command and return its output. Use for tasks like running tests, installing packages, or checking system state. Commands time out after 60 seconds by default.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "command": {
                             "type": "string",
                             "description": "Shell command to execute"
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Timeout in seconds (default: 60). Use higher values for long-running commands like builds."
                         }
                     },
                     "required": ["command"]
