@@ -50,6 +50,11 @@ pub struct App {
     pub file_suggestion_index: Option<usize>,
     file_cache: Vec<String>,
     file_cache_time: std::time::Instant,
+
+    // Reverse search (Ctrl+R)
+    pub search_mode: bool,
+    pub search_query: String,
+    pub search_match: Option<String>,
 }
 
 impl App {
@@ -80,6 +85,9 @@ impl App {
             file_suggestion_index: None,
             file_cache: Vec::new(),
             file_cache_time: std::time::Instant::now(),
+            search_mode: false,
+            search_query: String::new(),
+            search_match: None,
         };
 
         // Welcome message (rendered as styled widget in ui.rs when messages are empty)
@@ -667,6 +675,31 @@ impl App {
         Vec::new()
     }
 
+    pub fn update_search(&mut self) {
+        let query = self.search_query.to_lowercase();
+        self.search_match = self
+            .input_history
+            .iter()
+            .rev()
+            .find(|h| h.to_lowercase().contains(&query))
+            .cloned();
+    }
+
+    pub fn accept_search(&mut self) {
+        if let Some(matched) = self.search_match.take() {
+            self.input = matched;
+            self.cursor_pos = self.input.len();
+        }
+        self.search_mode = false;
+        self.search_query.clear();
+    }
+
+    pub fn cancel_search(&mut self) {
+        self.search_mode = false;
+        self.search_query.clear();
+        self.search_match = None;
+    }
+
     pub fn select_file_suggestion(&mut self) -> bool {
         if self.file_suggestions.is_empty() {
             return false;
@@ -1017,6 +1050,9 @@ impl App {
             file_suggestion_index: None,
             file_cache: Vec::new(),
             file_cache_time: std::time::Instant::now(),
+            search_mode: false,
+            search_query: String::new(),
+            search_match: None,
         }
     }
 }
@@ -1584,5 +1620,69 @@ mod tests {
         app.file_suggestion_index = Some(0);
         assert!(app.select_file_suggestion());
         assert_eq!(app.input, "fix @src/main.rs ");
+    }
+
+    // -- Reverse search tests --
+
+    #[test]
+    fn test_search_finds_match() {
+        let mut app = App::test_new();
+        app.input_history = vec![
+            "first command".to_string(),
+            "second command".to_string(),
+            "third special".to_string(),
+        ];
+        app.search_query = "special".to_string();
+        app.update_search();
+        assert_eq!(app.search_match, Some("third special".to_string()));
+    }
+
+    #[test]
+    fn test_search_no_match() {
+        let mut app = App::test_new();
+        app.input_history = vec!["hello".to_string()];
+        app.search_query = "xyz".to_string();
+        app.update_search();
+        assert_eq!(app.search_match, None);
+    }
+
+    #[test]
+    fn test_search_case_insensitive() {
+        let mut app = App::test_new();
+        app.input_history = vec!["Build Project".to_string()];
+        app.search_query = "build".to_string();
+        app.update_search();
+        assert_eq!(app.search_match, Some("Build Project".to_string()));
+    }
+
+    #[test]
+    fn test_search_accept() {
+        let mut app = App::test_new();
+        app.search_mode = true;
+        app.search_match = Some("test command".to_string());
+        app.accept_search();
+        assert_eq!(app.input, "test command");
+        assert!(!app.search_mode);
+    }
+
+    #[test]
+    fn test_search_cancel() {
+        let mut app = App::test_new();
+        app.search_mode = true;
+        app.search_query = "test".to_string();
+        app.search_match = Some("test".to_string());
+        app.cancel_search();
+        assert!(!app.search_mode);
+        assert!(app.search_query.is_empty());
+        assert!(app.search_match.is_none());
+    }
+
+    #[test]
+    fn test_search_prefers_recent() {
+        let mut app = App::test_new();
+        app.input_history = vec!["old match".to_string(), "new match".to_string()];
+        app.search_query = "match".to_string();
+        app.update_search();
+        assert_eq!(app.search_match, Some("new match".to_string()));
     }
 }

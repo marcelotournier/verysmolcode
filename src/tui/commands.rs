@@ -70,6 +70,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  Ctrl+C     Cancel/Quit\n  Ctrl+D     Quit (on empty input)\n");
             help.push_str("  Ctrl+L     Clear screen\n");
             help.push_str("  Ctrl+A/E   Jump to start/end of line\n");
+            help.push_str("  Ctrl+R     Search history (reverse)\n");
             help.push_str("  Ctrl+U/K   Delete before/after cursor\n");
             help.push_str("  Ctrl+W     Delete word backward\n");
             help.push_str("  Up/Down    History / Navigate commands\n");

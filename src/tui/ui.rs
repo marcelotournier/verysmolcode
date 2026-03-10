@@ -185,6 +185,37 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
+    // Reverse search mode
+    if app.search_mode {
+        let block = Block::default()
+            .title(" (reverse-i-search) ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Rgb(200, 150, 100)))
+            .style(Style::default().bg(INPUT_BG));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+
+        let display = if let Some(ref matched) = app.search_match {
+            format!("{}: {}", app.search_query, matched)
+        } else if app.search_query.is_empty() {
+            "Type to search history...".to_string()
+        } else {
+            format!("{}: (no match)", app.search_query)
+        };
+        let style = if app.search_match.is_some() {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        let input = Paragraph::new(display).style(style);
+        f.render_widget(input, inner);
+
+        let cursor_x = inner.x + UnicodeWidthStr::width(app.search_query.as_str()) as u16;
+        let cursor_y = inner.y;
+        f.set_cursor_position((cursor_x, cursor_y));
+        return;
+    }
+
     let is_multiline = app.input.contains('\n');
     let label = if app.is_processing {
         " ... "

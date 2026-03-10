@@ -303,6 +303,14 @@
 - [x] Session token counts (In/Out) always visible in status bar
 - [x] Human-readable token formatting (K/M suffixes)
 
+## Completed (v0.11.4) — Reverse Search & /diff shortcut
+- [x] Ctrl+R reverse search: interactive history search with live matching
+- [x] Orange-themed search input with query:match display
+- [x] Case-insensitive, prefers most recent match
+- [x] Enter accepts, Esc cancels, Backspace edits query
+- [x] /diff (/d) shortcut with args support (e.g. /diff --staged)
+- [x] 498 unit tests
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
@@ -362,10 +370,10 @@ Features that improve workflow continuity.
 - [ ] All slash commands + descriptions in fuzzy-filterable list
 - [ ] MCP tools listed alongside built-in commands
 
-### P2.3 - Reverse Search History
-- [ ] Ctrl+R for interactive history search
-- [ ] Highlight matches as you type
-- [ ] Select and re-execute from history
+### P2.3 - Reverse Search History ✅ (v0.11.4)
+- [x] Ctrl+R for interactive history search
+- [x] Live match highlighting as you type
+- [x] Enter to select, Esc to cancel
 
 ### P2.4 - Leader Key System
 - [ ] Configurable leader key (default Ctrl+X)

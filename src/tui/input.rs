@@ -52,10 +52,33 @@ fn word_start(input: &str, cursor: usize) -> usize {
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     if app.is_processing {
-        // Only allow scrolling while processing
         match key.code {
             KeyCode::PageUp => app.scroll_up(),
             KeyCode::PageDown => app.scroll_down(),
+            _ => {}
+        }
+        return;
+    }
+
+    // Reverse search mode (Ctrl+R)
+    if app.search_mode {
+        match key.code {
+            KeyCode::Enter => app.accept_search(),
+            KeyCode::Esc => app.cancel_search(),
+            KeyCode::Backspace => {
+                app.search_query.pop();
+                app.update_search();
+            }
+            KeyCode::Char(c) => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'r' {
+                    // Ctrl+R again: no-op (already in search mode)
+                } else if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
+                    app.cancel_search();
+                } else {
+                    app.search_query.push(c);
+                    app.update_search();
+                }
+            }
             _ => {}
         }
         return;
@@ -103,10 +126,14 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         app.clear_screen();
                     }
                     'd' => {
-                        // Unix EOF convention: quit when input is empty
                         if app.input.is_empty() {
                             app.should_quit = true;
                         }
+                    }
+                    'r' => {
+                        app.search_mode = true;
+                        app.search_query.clear();
+                        app.search_match = None;
                     }
                     _ => {}
                 }
