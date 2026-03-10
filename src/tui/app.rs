@@ -413,8 +413,9 @@ impl App {
     }
 
     fn send_to_agent(&mut self, input: &str) {
+        let expanded = Self::expand_file_refs(input);
         if let Some(tx) = &self.agent_tx {
-            if tx.send(input.to_string()).is_ok() {
+            if tx.send(expanded).is_ok() {
                 self.is_processing = true;
                 self.model_name = "Connecting...".to_string();
             } else {
@@ -423,6 +424,47 @@ impl App {
                 ));
             }
         }
+    }
+
+    fn expand_file_refs(input: &str) -> String {
+        let mut result = input.to_string();
+        let mut attachments = Vec::new();
+
+        // Find @file references (@ at start or after space, no space in path)
+        for word in input.split_whitespace() {
+            if let Some(path) = word.strip_prefix('@') {
+                if !path.is_empty() && !path.starts_with('/') {
+                    let file_path = std::path::Path::new(path);
+                    if file_path.exists() && file_path.is_file() {
+                        match std::fs::read_to_string(file_path) {
+                            Ok(contents) => {
+                                let truncated = if contents.len() > 8000 {
+                                    format!(
+                                        "{}...\n(truncated, {} bytes total)",
+                                        &contents[..8000],
+                                        contents.len()
+                                    )
+                                } else {
+                                    contents
+                                };
+                                attachments.push(format!(
+                                    "\n\n--- Contents of {} ---\n{}\n--- End of {} ---",
+                                    path, truncated, path
+                                ));
+                            }
+                            Err(_) => {
+                                attachments.push(format!("\n\n[Could not read file: {}]", path));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !attachments.is_empty() {
+            result.push_str(&attachments.join(""));
+        }
+        result
     }
 
     pub fn tick(&mut self) {
@@ -1702,6 +1744,33 @@ mod tests {
         assert!(!app.search_mode);
         assert!(app.search_query.is_empty());
         assert!(app.search_match.is_none());
+    }
+
+    #[test]
+    fn test_expand_file_refs_no_refs() {
+        let result = App::expand_file_refs("hello world");
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_expand_file_refs_nonexistent() {
+        let result = App::expand_file_refs("check @nonexistent_file_xyz.rs");
+        // File doesn't exist, so no expansion
+        assert_eq!(result, "check @nonexistent_file_xyz.rs");
+    }
+
+    #[test]
+    fn test_expand_file_refs_existing_file() {
+        let result = App::expand_file_refs("look at @Cargo.toml");
+        assert!(result.contains("--- Contents of Cargo.toml ---"));
+        assert!(result.contains("[package]"));
+    }
+
+    #[test]
+    fn test_expand_file_refs_email_ignored() {
+        let result = App::expand_file_refs("email user@example.com");
+        // @ in middle of word, not a file ref
+        assert_eq!(result, "email user@example.com");
     }
 
     #[test]

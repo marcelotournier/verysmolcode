@@ -316,6 +316,12 @@
 - [x] /new (/n) command: saves current session and starts fresh
 - [x] Help text updated with Ctrl+P and /new
 
+## Completed (v0.11.6) — @file Content Expansion
+- [x] @file references auto-expand: reads file and appends content to message
+- [x] Content truncated at 8K chars (consistent with tool result limits)
+- [x] Graceful handling: emails ignored, nonexistent files skipped
+- [x] 502 unit tests
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
