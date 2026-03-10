@@ -36,6 +36,7 @@ pub struct AgentLoop {
     files_modified: bool, // Track if any write/edit tools were used this turn
     pub model_override: ModelOverride,
     undo_history: UndoHistory,
+    startup_warnings: Vec<String>,
 }
 
 /// Max characters for a single tool result before truncation.
@@ -117,13 +118,17 @@ impl AgentLoop {
         // Start configured MCP servers
         let mcp_config = McpConfig::load();
         let mut mcp_clients = Vec::new();
+        let mut startup_warnings = Vec::new();
         for server_config in &mcp_config.servers {
             match McpClient::start(server_config) {
                 Ok(client) => {
                     mcp_clients.push(client);
                 }
-                Err(_) => {
-                    // Non-fatal: skip servers that fail to start
+                Err(e) => {
+                    startup_warnings.push(format!(
+                        "MCP server '{}' failed to start: {}",
+                        server_config.name, e
+                    ));
                 }
             }
         }
@@ -138,6 +143,7 @@ impl AgentLoop {
             files_modified: false,
             model_override: ModelOverride::None,
             undo_history: UndoHistory::new(),
+            startup_warnings,
         })
     }
 
@@ -643,6 +649,11 @@ impl AgentLoop {
     /// Undo the last turn's file changes
     pub fn undo(&mut self) -> Result<Vec<String>, String> {
         self.undo_history.undo()
+    }
+
+    /// Take any startup warnings (e.g., MCP server failures)
+    pub fn take_startup_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.startup_warnings)
     }
 }
 

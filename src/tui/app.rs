@@ -90,7 +90,13 @@ impl App {
 
         thread::spawn(move || {
             let mut agent = match AgentLoop::new() {
-                Ok(a) => a,
+                Ok(mut a) => {
+                    // Report any MCP startup warnings to the user
+                    for warning in a.take_startup_warnings() {
+                        let _ = event_tx.send(AgentEvent::Status(warning));
+                    }
+                    a
+                }
                 Err(e) => {
                     let _ = event_tx.send(AgentEvent::Status(format!("Error: {}", e)));
                     let _ = done_tx.send(());
