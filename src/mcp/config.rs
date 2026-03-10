@@ -45,3 +45,89 @@ impl McpConfig {
         self.servers.len() < before
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn test_server(name: &str) -> McpServerConfig {
+        McpServerConfig {
+            name: name.to_string(),
+            command: "npx".to_string(),
+            args: vec!["-y".to_string(), format!("@test/{}", name)],
+            env: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_default_empty() {
+        let config = McpConfig::default();
+        assert!(config.servers.is_empty());
+    }
+
+    #[test]
+    fn test_add_server() {
+        let mut config = McpConfig::default();
+        config.add_server(test_server("context7"));
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].name, "context7");
+    }
+
+    #[test]
+    fn test_add_server_replaces_existing() {
+        let mut config = McpConfig::default();
+        config.add_server(test_server("context7"));
+        config.add_server(McpServerConfig {
+            name: "context7".to_string(),
+            command: "node".to_string(), // different command
+            args: vec![],
+            env: HashMap::new(),
+        });
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].command, "node");
+    }
+
+    #[test]
+    fn test_add_multiple_servers() {
+        let mut config = McpConfig::default();
+        config.add_server(test_server("context7"));
+        config.add_server(test_server("playwright"));
+        assert_eq!(config.servers.len(), 2);
+    }
+
+    #[test]
+    fn test_remove_server() {
+        let mut config = McpConfig::default();
+        config.add_server(test_server("context7"));
+        config.add_server(test_server("playwright"));
+        assert!(config.remove_server("context7"));
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].name, "playwright");
+    }
+
+    #[test]
+    fn test_remove_nonexistent() {
+        let mut config = McpConfig::default();
+        config.add_server(test_server("context7"));
+        assert!(!config.remove_server("nonexistent"));
+        assert_eq!(config.servers.len(), 1);
+    }
+
+    #[test]
+    fn test_serialization_roundtrip() {
+        let mut config = McpConfig::default();
+        config.add_server(test_server("context7"));
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: McpConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.servers.len(), 1);
+        assert_eq!(parsed.servers[0].name, "context7");
+        assert_eq!(parsed.servers[0].command, "npx");
+    }
+
+    #[test]
+    fn test_config_path() {
+        let path = McpConfig::config_path();
+        assert!(path.to_string_lossy().contains("mcp_servers.json"));
+    }
+}

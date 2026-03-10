@@ -173,6 +173,97 @@ fn safe_truncate(s: &str, max: usize) -> String {
     format!("{}...\n(truncated, {} bytes total)", &s[..end], s.len())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = Config::default();
+        assert_eq!(config.max_tokens_per_response, 4096);
+        assert_eq!(config.max_conversation_tokens, 32000);
+        assert_eq!(config.temperature, 0.7);
+        assert_eq!(config.auto_compact_threshold, 24000);
+        assert!(config.safety_enabled);
+        assert_eq!(config.command_timeout, 60);
+    }
+
+    #[test]
+    fn test_config_serialization() {
+        let config = Config::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.max_tokens_per_response,
+            config.max_tokens_per_response
+        );
+        assert_eq!(parsed.temperature, config.temperature);
+        assert_eq!(parsed.safety_enabled, config.safety_enabled);
+    }
+
+    #[test]
+    fn test_config_deserialization_missing_timeout() {
+        // command_timeout should default to 60 when missing
+        let json = r#"{
+            "max_tokens_per_response": 4096,
+            "max_conversation_tokens": 32000,
+            "temperature": 0.7,
+            "auto_compact_threshold": 24000,
+            "system_prompt": "test",
+            "safety_enabled": true
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.command_timeout, 60);
+    }
+
+    #[test]
+    fn test_config_dir() {
+        let dir = Config::config_dir();
+        assert!(dir.to_string_lossy().contains("verysmolcode"));
+    }
+
+    #[test]
+    fn test_config_path() {
+        let path = Config::config_path();
+        assert!(path.to_string_lossy().contains("config.json"));
+    }
+
+    #[test]
+    fn test_safe_truncate_short() {
+        let s = "hello";
+        assert_eq!(safe_truncate(s, 100), "hello");
+    }
+
+    #[test]
+    fn test_safe_truncate_long() {
+        let s = "hello world, this is a long string";
+        let result = safe_truncate(s, 10);
+        assert!(result.contains("..."));
+        assert!(result.contains("truncated"));
+    }
+
+    #[test]
+    fn test_safe_truncate_utf8_boundary() {
+        let s = "Hello \u{1F600} World"; // emoji is multi-byte
+        let result = safe_truncate(s, 8);
+        // Should not panic on multi-byte boundary
+        assert!(result.contains("..."));
+    }
+
+    #[test]
+    fn test_default_system_prompt() {
+        let prompt = default_system_prompt();
+        assert!(prompt.contains("VerySmolCode"));
+        assert!(prompt.contains("todo_update"));
+    }
+
+    #[test]
+    fn test_git_context_summary() {
+        // Just verify it doesn't panic — output depends on git state
+        let _context = git_context_summary();
+    }
+}
+
 fn git_context_summary() -> String {
     let branch = std::process::Command::new("git")
         .args(["branch", "--show-current"])
