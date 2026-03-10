@@ -191,9 +191,10 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     let input = Paragraph::new(display_text).style(style);
     f.render_widget(input, inner);
 
-    // Show cursor
+    // Show cursor (count chars before cursor_pos, not bytes)
     if !app.is_processing {
-        f.set_cursor_position(Position::new(inner.x + app.cursor_pos as u16, inner.y));
+        let visual_pos = app.input[..app.cursor_pos].chars().count();
+        f.set_cursor_position(Position::new(inner.x + visual_pos as u16, inner.y));
     }
 }
 
