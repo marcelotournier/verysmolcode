@@ -119,6 +119,15 @@
 - [x] System prompt encourages MCP tools usage (context7) for library docs lookup
 - [x] 226 unit tests
 
+## Completed (v0.9.1)
+- [x] /retry (/r) command - resend last message on failure
+- [x] /compact now actually compacts conversation (was no-op)
+- [x] Transient error recovery (timeouts, 500/502/504 retry once with 2s delay)
+- [x] Emoji indicators for all message types in TUI
+- [x] Categorized /help display with emoji section headers
+- [x] MCP-aware system prompt (lists servers/tools, encourages context7 for docs)
+- [x] 228 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
