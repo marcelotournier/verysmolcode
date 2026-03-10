@@ -237,9 +237,8 @@ fn resolve_path(path: &str) -> PathBuf {
 }
 
 /// System paths that should never be written to by the coding assistant.
-/// This list is the authoritative source — keep it in sync with
-/// is_dangerous_tool_call() in agent/loop_runner.rs (pre-filter).
-const BLOCKED_PATH_PREFIXES: &[&str] = &[
+/// Single source of truth — reused by is_dangerous_tool_call() in agent/loop_runner.rs.
+pub const BLOCKED_PATH_PREFIXES: &[&str] = &[
     "/etc/", "/boot/", "/usr/", "/bin/", "/sbin/", "/lib/", "/proc/", "/sys/", "/dev/",
 ];
 

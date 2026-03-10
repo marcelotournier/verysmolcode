@@ -187,10 +187,15 @@ pub fn run_shell(args: &Value) -> Value {
         "rm -rf ~",
         "mkfs",
         "dd if=",
+        "dd of=",
         ":(){ :|:& };:",
         "chmod -R 777 /",
+        "chown -R /",
         "sudo rm",
         "> /dev/sda",
+        "> /dev/",
+        "> /etc/",
+        "> /boot/",
     ];
     for b in &blocked {
         if command.contains(b) {
@@ -469,5 +474,35 @@ mod tests {
     #[test]
     fn test_safe_truncate_empty() {
         assert_eq!(safe_truncate("", 10), "");
+    }
+
+    #[test]
+    fn test_run_shell_blocked_dd_of() {
+        let result = run_shell(&json!({"command": "dd of=/dev/sda bs=512"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_chown_recursive() {
+        let result = run_shell(&json!({"command": "chown -R / root:root"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_redirect_dev() {
+        let result = run_shell(&json!({"command": "echo x > /dev/null"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_redirect_etc() {
+        let result = run_shell(&json!({"command": "echo x > /etc/hosts"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
+    }
+
+    #[test]
+    fn test_run_shell_blocked_redirect_boot() {
+        let result = run_shell(&json!({"command": "echo x > /boot/grub.cfg"}));
+        assert!(result["error"].as_str().unwrap().contains("Blocked"));
     }
 }

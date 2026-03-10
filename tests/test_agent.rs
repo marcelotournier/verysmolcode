@@ -460,6 +460,62 @@ fn test_dangerous_redirect_to_sys() {
     ));
 }
 
+#[test]
+fn test_dangerous_chown_recursive() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "chown -R root:root /"})
+    ));
+}
+
+#[test]
+fn test_dangerous_eval() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "eval $(cat /tmp/payload.sh)"})
+    ));
+}
+
+#[test]
+fn test_dangerous_exec() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "exec /bin/sh"})
+    ));
+}
+
+#[test]
+fn test_dangerous_redirect_to_boot() {
+    assert!(is_dangerous_tool_call(
+        "run_command",
+        &json!({"command": "echo garbage > /boot/grub.cfg"})
+    ));
+}
+
+#[test]
+fn test_dangerous_edit_file_etc() {
+    assert!(is_dangerous_tool_call(
+        "edit_file",
+        &json!({"path": "/etc/passwd", "old_string": "x", "new_string": "y"})
+    ));
+}
+
+#[test]
+fn test_dangerous_edit_file_boot() {
+    assert!(is_dangerous_tool_call(
+        "edit_file",
+        &json!({"path": "/boot/config.txt", "old_string": "a", "new_string": "b"})
+    ));
+}
+
+#[test]
+fn test_safe_edit_file() {
+    assert!(!is_dangerous_tool_call(
+        "edit_file",
+        &json!({"path": "/home/user/project/main.rs", "old_string": "a", "new_string": "b"})
+    ));
+}
+
 // -- ModelOverride tests --
 
 #[test]

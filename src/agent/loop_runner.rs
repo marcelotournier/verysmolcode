@@ -887,10 +887,12 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
                     "init 6",
                     "chmod 777",
                     "chmod -R 777",
+                    "chown -R",
                     "> /dev/",
                     "> /etc",
                     "> /sys",
                     "> /proc",
+                    "> /boot",
                 ];
                 if dangerous.iter().any(|d| cmd.contains(d)) {
                     return true;
@@ -906,18 +908,20 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
                 if has_download && has_pipe_exec {
                     return true;
                 }
+                // Block eval/exec with variables (code injection)
+                if cmd.contains("eval ") || cmd.contains("exec ") {
+                    return true;
+                }
                 false
             } else {
                 false
             }
         }
-        "write_file" => {
+        "write_file" | "edit_file" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
-                let dangerous_paths = [
-                    "/etc/", "/boot/", "/usr/", "/bin/", "/sbin/", "/lib/", "/proc/", "/sys/",
-                    "/dev/",
-                ];
-                return dangerous_paths.iter().any(|d| path.starts_with(d));
+                return crate::tools::file_ops::BLOCKED_PATH_PREFIXES
+                    .iter()
+                    .any(|d| path.starts_with(d));
             }
             false
         }

@@ -100,8 +100,9 @@ impl McpClient {
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
 
-        // Read lines until we get a valid JSON-RPC response
-        loop {
+        // Read lines until we get a valid JSON-RPC response (max 1000 lines to prevent infinite loop)
+        let max_lines = 1000;
+        for _ in 0..max_lines {
             line.clear();
             match reader.read_line(&mut line) {
                 Ok(0) => {
@@ -127,6 +128,7 @@ impl McpClient {
                 Err(e) => return Err(format!("Read error: {}", e)),
             }
         }
+        Err("MCP server sent too many non-response lines (limit: 1000)".to_string())
     }
 
     fn initialize(&mut self) -> Result<(), String> {

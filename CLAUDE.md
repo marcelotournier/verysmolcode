@@ -205,6 +205,15 @@
 - [x] Fixed MCP test flakiness: Mutex serializes config file access across parallel threads
 - [x] 417 unit tests
 
+## Completed (v0.10.0)
+- [x] Shared BLOCKED_PATH_PREFIXES: single source of truth (file_ops.rs), reused by is_dangerous_tool_call()
+- [x] is_dangerous_tool_call now also checks edit_file (not just write_file)
+- [x] New dangerous command patterns: chown -R, eval, exec, > /boot
+- [x] Expanded run_shell blocked list: dd of=, chown -R /, > /dev/, > /etc/, > /boot/
+- [x] MCP response loop safety: max 1000 lines prevents infinite loop on misbehaving servers
+- [x] 12 new tests for new safety patterns
+- [x] 434 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
