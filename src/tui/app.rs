@@ -25,6 +25,12 @@ pub struct App {
     pub model_name: String,
     pub rate_status: String,
 
+    // Token tracking (cached from last TokenUpdate)
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_thinking_tokens: u64,
+    pub conversation_tokens: u32,
+
     // Agent communication
     agent_tx: Option<mpsc::Sender<String>>,
     event_rx: Option<mpsc::Receiver<AgentEvent>>,
@@ -48,6 +54,10 @@ impl App {
             status_line: String::new(),
             model_name: "Ready".to_string(),
             rate_status: String::new(),
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_thinking_tokens: 0,
+            conversation_tokens: 0,
             agent_tx: None,
             event_rx: None,
             done_rx: None,
@@ -178,6 +188,11 @@ impl App {
                     self.messages.push(DisplayMessage::User(input.clone()));
                     self.send_to_agent(&msg);
                 }
+                CommandResponse::ShowTokens => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    self.messages
+                        .push(DisplayMessage::Assistant(self.token_summary()));
+                }
             }
         } else {
             self.messages.push(DisplayMessage::User(input.clone()));
@@ -256,8 +271,20 @@ impl App {
                 AgentEvent::ModelSwitch(name) => {
                     self.model_name = name;
                 }
-                AgentEvent::TokenUpdate { total, .. } => {
-                    self.status_line = format!("Tokens: {}", total);
+                AgentEvent::TokenUpdate {
+                    input,
+                    output,
+                    total,
+                    thinking,
+                } => {
+                    self.total_input_tokens += input as u64;
+                    self.total_output_tokens += output as u64;
+                    self.total_thinking_tokens += thinking as u64;
+                    self.conversation_tokens = total;
+                    self.status_line = format!(
+                        "In:{} Out:{} Ctx:{}",
+                        self.total_input_tokens, self.total_output_tokens, total
+                    );
                 }
                 AgentEvent::Status(s) => {
                     if let Some(rate) = s.strip_prefix("RATE:") {
@@ -339,12 +366,43 @@ impl App {
     }
 }
 
+impl App {
+    pub fn token_summary(&self) -> String {
+        let total = self.total_input_tokens + self.total_output_tokens;
+        format!(
+            "Token Usage:\n\
+             \n\
+             Session totals:\n\
+             Input tokens:    {}\n\
+             Output tokens:   {}\n\
+             Thinking tokens: {}\n\
+             Total tokens:    {}\n\
+             \n\
+             Current context: {} tokens\n\
+             \n\
+             Rate limits remaining:\n\
+             {}",
+            self.total_input_tokens,
+            self.total_output_tokens,
+            self.total_thinking_tokens,
+            total,
+            self.conversation_tokens,
+            if self.rate_status.is_empty() {
+                "No requests made yet".to_string()
+            } else {
+                self.rate_status.clone()
+            }
+        )
+    }
+}
+
 pub enum CommandResponse {
     Message(String),
     Quit,
     Clear,
     SendToAgent(String),
     TogglePlan,
+    ShowTokens,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {

@@ -133,10 +133,18 @@ fn test_mcp_rm_nonexistent() {
 }
 
 #[test]
-fn test_status_sends_to_agent() {
+fn test_status_shows_tokens() {
     assert!(matches!(
         handle_command("/status"),
-        verysmolcode::tui::app::CommandResponse::SendToAgent(_)
+        verysmolcode::tui::app::CommandResponse::ShowTokens
+    ));
+}
+
+#[test]
+fn test_tokens_shows_tokens() {
+    assert!(matches!(
+        handle_command("/tokens"),
+        verysmolcode::tui::app::CommandResponse::ShowTokens
     ));
 }
 
