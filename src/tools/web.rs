@@ -77,51 +77,68 @@ pub fn web_fetch(args: &Value) -> Value {
     }
 }
 
+/// Check if bytes at position match a tag name (case-insensitive ASCII)
+fn matches_tag(bytes: &[u8], pos: usize, tag: &[u8]) -> bool {
+    pos + 1 + tag.len() <= bytes.len()
+        && bytes[pos] == b'<'
+        && bytes[pos + 1..pos + 1 + tag.len()]
+            .iter()
+            .zip(tag)
+            .all(|(a, b)| a.to_ascii_lowercase() == *b)
+}
+
+/// Check if bytes at position match a closing tag (case-insensitive ASCII)
+fn matches_close_tag(bytes: &[u8], pos: usize, tag: &[u8]) -> bool {
+    pos + 2 + tag.len() < bytes.len()
+        && bytes[pos] == b'<'
+        && bytes[pos + 1] == b'/'
+        && bytes[pos + 2..pos + 2 + tag.len()]
+            .iter()
+            .zip(tag)
+            .all(|(a, b)| a.to_ascii_lowercase() == *b)
+        && bytes[pos + 2 + tag.len()] == b'>'
+}
+
 /// Simple HTML tag stripper - removes tags and collapses whitespace.
 /// Uses byte-level scanning for ASCII tags to avoid allocating Vec<char>.
+/// Strips <script> and <style> block content entirely.
 fn strip_html_tags(html: &str) -> String {
     let mut result = String::with_capacity(html.len() / 2);
     let bytes = html.as_bytes();
     let len = bytes.len();
     let mut in_tag = false;
-    let mut in_script = false;
+    let mut in_hidden: Option<&[u8]> = None; // which tag we're inside (script or style)
     let mut last_was_space = false;
     let mut i = 0;
 
+    // Tags whose content should be stripped entirely
+    const HIDDEN_TAGS: &[&[u8]] = &[b"script", b"style"];
+
     while i < len {
-        // Check for <script (case-insensitive, ASCII only)
-        if !in_tag
-            && !in_script
-            && i + 7 <= len
-            && bytes[i] == b'<'
-            && bytes[i + 1..i + 7]
-                .iter()
-                .zip(b"script")
-                .all(|(a, b)| a.to_ascii_lowercase() == *b)
-        {
-            in_script = true;
-            in_tag = true;
-            i += 1;
-            continue;
-        }
-        // Check for </script> (case-insensitive)
-        if in_script
-            && i + 9 <= len
-            && bytes[i] == b'<'
-            && bytes[i + 1] == b'/'
-            && bytes[i + 2..i + 8]
-                .iter()
-                .zip(b"script")
-                .all(|(a, b)| a.to_ascii_lowercase() == *b)
-            && bytes[i + 8] == b'>'
-        {
-            in_script = false;
-            in_tag = false;
-            i += 9;
-            continue;
+        // Check for opening hidden tags (<script, <style)
+        if !in_tag && in_hidden.is_none() {
+            for tag in HIDDEN_TAGS {
+                if matches_tag(bytes, i, tag) {
+                    in_hidden = Some(tag);
+                    in_tag = true;
+                    i += 1;
+                    break;
+                }
+            }
+            if in_hidden.is_some() {
+                continue;
+            }
         }
 
-        if in_script {
+        // Check for closing hidden tags (</script>, </style>)
+        if let Some(tag) = in_hidden {
+            if matches_close_tag(bytes, i, tag) {
+                let skip = 2 + tag.len() + 1; // </tag>
+                in_hidden = None;
+                in_tag = false;
+                i += skip;
+                continue;
+            }
             i += 1;
             continue;
         }
@@ -275,5 +292,25 @@ mod tests {
         assert!(result.contains("Before"));
         assert!(result.contains("After"));
         assert!(!result.contains("bad"));
+    }
+
+    #[test]
+    fn test_strip_html_style_removed() {
+        let html =
+            "<p>Hello</p><style>.foo { color: red; } body { margin: 0; }</style><p>World</p>";
+        let result = strip_html_tags(html);
+        assert!(result.contains("Hello"));
+        assert!(result.contains("World"));
+        assert!(!result.contains("color"));
+        assert!(!result.contains("margin"));
+    }
+
+    #[test]
+    fn test_strip_html_style_case_insensitive() {
+        let html = "<p>A</p><STYLE>h1{font-size:2em}</STYLE><p>B</p>";
+        let result = strip_html_tags(html);
+        assert!(result.contains("A"));
+        assert!(result.contains("B"));
+        assert!(!result.contains("font-size"));
     }
 }
