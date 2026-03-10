@@ -14,6 +14,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/status", "Show rate limits and token usage"),
     ("/config", "Show/set config: /config set <key> <value>"),
     ("/undo", "Undo the last batch of file changes"),
+    ("/save", "Save conversation to file: /save [filename]"),
     ("/compact", "Manually compact conversation to save tokens"),
     ("/model", "Show available models and current selection"),
     ("/mcp", "List configured MCP servers"),
@@ -51,6 +52,14 @@ pub fn handle_command(input: &str) -> CommandResponse {
         "/plan" => CommandResponse::TogglePlan,
         "/tokens" | "/status" => CommandResponse::ShowTokens,
         "/undo" | "/u" => CommandResponse::Undo,
+        "/save" => {
+            let filename = if args.is_empty() {
+                None
+            } else {
+                Some(args.to_string())
+            };
+            CommandResponse::Save(filename)
+        }
         "/config" => {
             if let Some(set_rest) = args.strip_prefix("set ") {
                 let set_args: Vec<&str> = set_rest.splitn(2, ' ').collect();

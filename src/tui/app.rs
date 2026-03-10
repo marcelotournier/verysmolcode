@@ -234,6 +234,16 @@ impl App {
                     self.messages
                         .push(DisplayMessage::Assistant(self.token_summary()));
                 }
+                CommandResponse::Save(filename) => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    let result = self.save_conversation(filename.as_deref());
+                    self.messages.push(match result {
+                        Ok(path) => {
+                            DisplayMessage::Assistant(format!("Conversation saved to {}", path))
+                        }
+                        Err(e) => DisplayMessage::Error(format!("Save failed: {}", e)),
+                    });
+                }
                 CommandResponse::Undo => {
                     self.messages.push(DisplayMessage::User(input.clone()));
                     if let Some(tx) = &self.agent_tx {
@@ -430,6 +440,47 @@ impl App {
 }
 
 impl App {
+    fn save_conversation(&self, filename: Option<&str>) -> Result<String, String> {
+        let path = match filename {
+            Some(f) => f.to_string(),
+            None => {
+                let now = chrono::Local::now();
+                format!("vsc-conversation-{}.md", now.format("%Y%m%d-%H%M%S"))
+            }
+        };
+
+        let mut output = String::from("# VerySmolCode Conversation\n\n");
+
+        for msg in &self.messages {
+            match msg {
+                DisplayMessage::User(text) => {
+                    output.push_str(&format!("## User\n{}\n\n", text));
+                }
+                DisplayMessage::Assistant(text) => {
+                    output.push_str(&format!("## Assistant\n{}\n\n", text));
+                }
+                DisplayMessage::ToolCall(text) => {
+                    output.push_str(&format!("**Tool Call:** `{}`\n\n", text));
+                }
+                DisplayMessage::ToolResult(text) => {
+                    output.push_str(&format!("**Tool Result:** {}\n\n", text));
+                }
+                DisplayMessage::Status(text) => {
+                    output.push_str(&format!("*Status: {}*\n\n", text));
+                }
+                DisplayMessage::Error(text) => {
+                    output.push_str(&format!("**Error:** {}\n\n", text));
+                }
+                DisplayMessage::ModelInfo(text) => {
+                    output.push_str(&format!("*Model: {}*\n\n", text));
+                }
+            }
+        }
+
+        std::fs::write(&path, &output).map_err(|e| format!("Failed to write {}: {}", path, e))?;
+        Ok(path)
+    }
+
     pub fn token_summary(&self) -> String {
         let total = self.total_input_tokens + self.total_output_tokens;
         format!(
@@ -468,6 +519,7 @@ pub enum CommandResponse {
     ShowTokens,
     SetModelOverride(String), // "fast" or "smart"
     Undo,
+    Save(Option<String>), // Optional filename
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -661,5 +713,7 @@ mod tests {
         let _tokens = CommandResponse::ShowTokens;
         let _override = CommandResponse::SetModelOverride("fast".to_string());
         let _undo = CommandResponse::Undo;
+        let _save = CommandResponse::Save(None);
+        let _save_file = CommandResponse::Save(Some("test.md".to_string()));
     }
 }

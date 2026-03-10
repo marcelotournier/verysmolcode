@@ -205,6 +205,20 @@ fn test_smart_command() {
 }
 
 #[test]
+fn test_save_command() {
+    assert!(matches!(
+        handle_command("/save"),
+        verysmolcode::tui::app::CommandResponse::Save(None)
+    ));
+    match handle_command("/save output.md") {
+        verysmolcode::tui::app::CommandResponse::Save(Some(name)) => {
+            assert_eq!(name, "output.md");
+        }
+        _ => panic!("Expected Save with filename"),
+    }
+}
+
+#[test]
 fn test_undo_command() {
     assert!(matches!(
         handle_command("/undo"),

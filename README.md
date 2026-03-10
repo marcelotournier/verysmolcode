@@ -61,6 +61,7 @@ vsc
 | `/smart`     | Use Pro models for next message (best quality)    |
 | `/plan`      | Toggle planning mode (read-only, Pro model)       |
 | `/undo`      | Undo the last batch of file changes                |
+| `/save`      | Save conversation to file: `/save [filename]`      |
 | `/tokens`    | Show detailed token usage and rate limits         |
 | `/status`    | Show rate limits and token usage                  |
 | `/model`     | Show available models and rate limits             |
@@ -154,7 +155,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (190 tests)
+# Unit tests (192 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)
