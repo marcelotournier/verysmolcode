@@ -36,3 +36,35 @@
   - Add user documentation in README.md so humans can easily work
   - Add TODO items in this document and modify this document as VerySmolCode evolves.
 
+# TODO / Progress Tracker
+
+## Completed (v0.3.0)
+- [x] Repo setup (gitignore, license, maturin/pyo3)
+- [x] Gemini API client with Pro/Flash/Flash-Lite model routing
+- [x] Rate limiting with per-model RPM/RPD tracking
+- [x] Tool system: file read/write/edit, grep, find, git, shell, web fetch
+- [x] TUI: blue theme, input history, slash commands, scrolling
+- [x] Agent loop with automatic model fallback
+- [x] Critic verification (Flash-Lite reviews completed work)
+- [x] Planning mode (/plan) with read-only tools
+- [x] Chain-of-thought for Flash models (thinkingConfig)
+- [x] Safety: blocks destructive ops, validates paths
+- [x] MCP client support (stdio JSON-RPC protocol)
+- [x] MCP server management (/mcp, /mcp-add, /mcp-rm)
+- [x] Pre-commit hooks (fmt, clippy, tests)
+- [x] 47 unit tests
+- [x] README.md documentation
+- [x] CI/CD with GitHub Actions
+- [x] GitHub releases (v0.2.0, v0.3.0)
+
+## In Progress
+- [ ] Integration tests (tmux + bottle.py todo app)
+- [ ] Wire MCP tools into the agent loop (currently config-only)
+
+## Planned
+- [ ] Image reading tool (base64 encode + send to Gemini)
+- [ ] Token usage dashboard in TUI
+- [ ] Configuration editing via slash commands (/config set)
+- [ ] More test coverage (target 100%)
+- [ ] Release binary builds for ARM (Raspberry Pi)
+
