@@ -512,3 +512,119 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_summarize_read_file() {
+        let result = json!({"path": "/src/main.rs"});
+        let summary = summarize_tool_result("read_file", &result);
+        assert_eq!(summary, "[read_file] /src/main.rs");
+    }
+
+    #[test]
+    fn test_summarize_read_file_truncated() {
+        let result = json!({"path": "/big.rs", "truncated": true, "total_bytes": 50000});
+        let summary = summarize_tool_result("read_file", &result);
+        assert!(summary.contains("50000 bytes"));
+        assert!(summary.contains("truncated"));
+    }
+
+    #[test]
+    fn test_summarize_write_file() {
+        let result = json!({"path": "/tmp/out.txt", "bytes_written": 128});
+        let summary = summarize_tool_result("write_file", &result);
+        assert!(summary.contains("128 bytes"));
+        assert!(summary.contains("/tmp/out.txt"));
+    }
+
+    #[test]
+    fn test_summarize_edit_file() {
+        let result = json!({"path": "/src/lib.rs"});
+        let summary = summarize_tool_result("edit_file", &result);
+        assert_eq!(summary, "[edit_file] /src/lib.rs");
+    }
+
+    #[test]
+    fn test_summarize_grep_search() {
+        let result = json!({"total_matches": 42});
+        let summary = summarize_tool_result("grep_search", &result);
+        assert_eq!(summary, "[grep] 42 matches found");
+    }
+
+    #[test]
+    fn test_summarize_git_status() {
+        let result = json!({"output": "On branch main\nnothing to commit"});
+        let summary = summarize_tool_result("git_status", &result);
+        assert!(summary.contains("[git_status]"));
+        assert!(summary.contains("On branch main"));
+    }
+
+    #[test]
+    fn test_summarize_git_long_output() {
+        let long = "x".repeat(200);
+        let result = json!({"output": long});
+        let summary = summarize_tool_result("git_diff", &result);
+        assert!(summary.contains("..."));
+        assert!(summary.len() < 200);
+    }
+
+    #[test]
+    fn test_summarize_run_command_success() {
+        let result = json!({"success": true, "exit_code": 0});
+        let summary = summarize_tool_result("run_command", &result);
+        assert_eq!(summary, "[cmd] Exit code: 0");
+    }
+
+    #[test]
+    fn test_summarize_run_command_failure() {
+        let result = json!({"success": false, "exit_code": 1, "stderr": "compilation error"});
+        let summary = summarize_tool_result("run_command", &result);
+        assert!(summary.contains("Failed"));
+        assert!(summary.contains("compilation error"));
+    }
+
+    #[test]
+    fn test_summarize_unknown_tool() {
+        let result = json!({"anything": "here"});
+        let summary = summarize_tool_result("some_mcp_tool", &result);
+        assert_eq!(summary, "[some_mcp_tool] Done");
+    }
+
+    #[test]
+    fn test_summarize_error() {
+        let result = json!({"error": "file not found"});
+        let summary = summarize_tool_result("read_file", &result);
+        assert!(summary.contains("Error"));
+        assert!(summary.contains("file not found"));
+    }
+
+    #[test]
+    fn test_display_message_variants() {
+        let msgs = vec![
+            DisplayMessage::User("hello".to_string()),
+            DisplayMessage::Assistant("hi".to_string()),
+            DisplayMessage::ToolCall("read_file(path=/tmp)".to_string()),
+            DisplayMessage::ToolResult("[read_file] /tmp".to_string()),
+            DisplayMessage::Status("Ready".to_string()),
+            DisplayMessage::Error("oops".to_string()),
+            DisplayMessage::ModelInfo("Gemini 3 Flash".to_string()),
+        ];
+        assert_eq!(msgs.len(), 7);
+    }
+
+    #[test]
+    fn test_command_response_variants() {
+        // Just ensure all variants exist and can be constructed
+        let _msg = CommandResponse::Message("hello".to_string());
+        let _quit = CommandResponse::Quit;
+        let _clear = CommandResponse::Clear;
+        let _send = CommandResponse::SendToAgent("test".to_string());
+        let _plan = CommandResponse::TogglePlan;
+        let _tokens = CommandResponse::ShowTokens;
+        let _override = CommandResponse::SetModelOverride("fast".to_string());
+    }
+}

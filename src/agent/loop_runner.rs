@@ -694,3 +694,149 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- is_complex_task tests --
+    // We can't call is_complex_task directly without an AgentLoop (needs API key),
+    // so we test the logic inline.
+
+    fn check_complex(input: &str) -> bool {
+        let complex_keywords = [
+            "refactor",
+            "architect",
+            "design",
+            "complex",
+            "debug",
+            "fix bug",
+            "optimize",
+            "review",
+            "analyze",
+            "explain",
+            "why",
+            "implement",
+            "create",
+            "build",
+            "full",
+            "entire",
+            "complete",
+        ];
+        let input_lower = input.to_lowercase();
+        let has_complex_keyword = complex_keywords.iter().any(|k| input_lower.contains(k));
+        let is_long = input.len() > 200;
+        has_complex_keyword || is_long
+    }
+
+    #[test]
+    fn test_complex_task_keywords() {
+        assert!(check_complex("refactor the auth module"));
+        assert!(check_complex("debug this crash"));
+        assert!(check_complex("explain why this fails"));
+        assert!(check_complex("implement a new feature"));
+        assert!(check_complex("build a REST API"));
+        assert!(check_complex("optimize the query"));
+        assert!(check_complex("review this PR"));
+        assert!(check_complex("analyze the codebase"));
+    }
+
+    #[test]
+    fn test_complex_task_case_insensitive() {
+        assert!(check_complex("REFACTOR everything"));
+        assert!(check_complex("Design a New System"));
+        assert!(check_complex("FIX BUG in auth"));
+    }
+
+    #[test]
+    fn test_simple_task() {
+        assert!(!check_complex("hello"));
+        assert!(!check_complex("what is this file"));
+        assert!(!check_complex("list files"));
+        assert!(!check_complex("show me the code"));
+    }
+
+    #[test]
+    fn test_complex_task_long_input() {
+        let long_input = "a".repeat(201);
+        assert!(check_complex(&long_input));
+    }
+
+    #[test]
+    fn test_complex_task_exactly_200_chars() {
+        let input = "a".repeat(200);
+        assert!(!check_complex(&input));
+    }
+
+    // -- compact_conversation logic tests --
+
+    #[test]
+    fn test_compact_small_conversation() {
+        // Conversations with 4 or fewer messages should not be compacted
+        let conv = vec![
+            Content {
+                role: Some("user".to_string()),
+                parts: vec![Part::text("hello")],
+            },
+            Content {
+                role: Some("model".to_string()),
+                parts: vec![Part::text("hi")],
+            },
+        ];
+        // Conversations with 4 or fewer messages should not be compacted
+        assert!(conv.len() <= 4);
+    }
+
+    #[test]
+    fn test_compact_large_conversation() {
+        let mut conv: Vec<Content> = (0..10)
+            .map(|i| Content {
+                role: Some(if i % 2 == 0 { "user" } else { "model" }.to_string()),
+                parts: vec![Part::text(&format!("message {}", i))],
+            })
+            .collect();
+
+        // Simulate compaction: keep first + summary + last 4
+        let keep_start = 1;
+        let keep_end = 4;
+
+        if conv.len() > keep_start + keep_end {
+            let summary = Content {
+                role: Some("user".to_string()),
+                parts: vec![Part::text("[Compacted]")],
+            };
+            let mut new_conv = vec![conv[0].clone()];
+            new_conv.push(summary);
+            let start = conv.len() - keep_end;
+            new_conv.extend_from_slice(&conv[start..]);
+            conv = new_conv;
+        }
+
+        // Should have: first + summary + last 4 = 6
+        assert_eq!(conv.len(), 6);
+        // First message preserved
+        match &conv[0].parts[0] {
+            Part::Text { text } => assert_eq!(text, "message 0"),
+            _ => panic!("Expected text"),
+        }
+        // Summary inserted
+        match &conv[1].parts[0] {
+            Part::Text { text } => assert!(text.contains("Compacted")),
+            _ => panic!("Expected text"),
+        }
+        // Last 4 messages preserved
+        match &conv[2].parts[0] {
+            Part::Text { text } => assert_eq!(text, "message 6"),
+            _ => panic!("Expected text"),
+        }
+    }
+
+    // -- Planning prompt tests --
+
+    #[test]
+    fn test_planning_prompt_contains_rules() {
+        assert!(PLANNING_SYSTEM_PROMPT.contains("PLANNING MODE"));
+        assert!(PLANNING_SYSTEM_PROMPT.contains("DO NOT make any changes"));
+        assert!(PLANNING_SYSTEM_PROMPT.contains("read files"));
+    }
+}

@@ -153,7 +153,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (160 tests)
+# Unit tests (181 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)
