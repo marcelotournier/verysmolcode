@@ -210,20 +210,18 @@ fn resolve_path(path: &str) -> PathBuf {
     }
 }
 
+/// System paths that should never be written to by the coding assistant.
+/// This list is the authoritative source — keep it in sync with
+/// is_dangerous_tool_call() in agent/loop_runner.rs (pre-filter).
+const BLOCKED_PATH_PREFIXES: &[&str] = &[
+    "/etc/", "/boot/", "/usr/", "/bin/", "/sbin/", "/lib/", "/proc/", "/sys/", "/dev/",
+];
+
 fn check_safe_path(path: &Path) -> Result<(), String> {
     let path_str = path.to_string_lossy();
 
     // Block dangerous system paths
-    let blocked = [
-        "/etc/passwd",
-        "/etc/shadow",
-        "/etc/sudoers",
-        "/boot/",
-        "/proc/",
-        "/sys/",
-        "/dev/",
-    ];
-    for b in &blocked {
+    for b in BLOCKED_PATH_PREFIXES {
         if path_str.starts_with(b) {
             return Err(format!("Access denied: {} is a protected path", b));
         }

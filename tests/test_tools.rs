@@ -54,6 +54,24 @@ fn test_write_file_blocked_path() {
 }
 
 #[test]
+fn test_write_file_blocked_usr() {
+    let result = file_ops::write_file(&json!({"path": "/usr/bin/evil", "content": "bad"}));
+    assert!(result.get("error").is_some());
+}
+
+#[test]
+fn test_write_file_blocked_bin() {
+    let result = file_ops::write_file(&json!({"path": "/bin/evil", "content": "bad"}));
+    assert!(result.get("error").is_some());
+}
+
+#[test]
+fn test_write_file_blocked_sbin() {
+    let result = file_ops::write_file(&json!({"path": "/sbin/evil", "content": "bad"}));
+    assert!(result.get("error").is_some());
+}
+
+#[test]
 fn test_edit_file_success() {
     let path = "/tmp/vsc_test_edit.txt";
     std::fs::write(path, "hello world").unwrap();
