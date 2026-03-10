@@ -5,7 +5,9 @@ pub mod session;
 pub mod ui;
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -19,7 +21,7 @@ pub fn run() -> Result<(), String> {
     // Setup terminal
     enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {}", e))?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
         .map_err(|e| format!("Failed to enter alternate screen: {}", e))?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal =
@@ -47,7 +49,12 @@ pub fn run() -> Result<(), String> {
 
     // Restore terminal
     disable_raw_mode().ok();
-    execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )
+    .ok();
     terminal.show_cursor().ok();
 
     result
@@ -66,8 +73,8 @@ fn run_app(
         if event::poll(std::time::Duration::from_millis(100))
             .map_err(|e| format!("Event poll error: {}", e))?
         {
-            if let Ok(Event::Key(key)) = event::read() {
-                match (key.modifiers, key.code) {
+            match event::read() {
+                Ok(Event::Key(key)) => match (key.modifiers, key.code) {
                     (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
                         if app.is_processing {
                             app.cancel_processing();
@@ -81,7 +88,13 @@ fn run_app(
                     _ => {
                         input::handle_key(app, key);
                     }
-                }
+                },
+                Ok(Event::Mouse(mouse)) => match mouse.kind {
+                    MouseEventKind::ScrollUp => app.scroll_up(),
+                    MouseEventKind::ScrollDown => app.scroll_down(),
+                    _ => {}
+                },
+                _ => {}
             }
         }
 

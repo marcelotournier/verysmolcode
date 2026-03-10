@@ -359,6 +359,11 @@
 - [x] [PLAN] badge consolidated into badge system
 - [x] 288 unit tests
 
+## Completed (v0.12.4) — Mouse Scroll Support
+- [x] Mouse scroll wheel/touchpad now scrolls message history
+- [x] EnableMouseCapture/DisableMouseCapture for proper terminal mouse support
+- [x] ScrollUp/ScrollDown mouse events handled in main event loop
+
 # Long-Term Roadmap: OpenCode + Claude Code Feature Parity
 
 ## Design Principles for VSC
