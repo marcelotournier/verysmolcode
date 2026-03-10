@@ -43,6 +43,19 @@ pub struct AgentLoop {
 /// Gemini's context is large but each token costs requests/day budget.
 const MAX_TOOL_RESULT_CHARS: usize = 8000;
 
+/// Find a safe truncation point that doesn't break UTF-8 char boundaries
+fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // Walk backwards from max_bytes to find a char boundary
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Truncate a tool result JSON to save tokens
 pub fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
     let s = result.to_string();
@@ -56,7 +69,7 @@ pub fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
             if let Some(val) = truncated.get(*key) {
                 let val_str = val.to_string();
                 if val_str.len() > MAX_TOOL_RESULT_CHARS / 2 {
-                    let cut = &val_str[..MAX_TOOL_RESULT_CHARS / 2];
+                    let cut = safe_truncate(&val_str, MAX_TOOL_RESULT_CHARS / 2);
                     truncated.insert(
                         key.to_string(),
                         serde_json::json!(format!(
@@ -70,12 +83,9 @@ pub fn truncate_tool_result(result: &serde_json::Value) -> serde_json::Value {
         }
         return serde_json::Value::Object(truncated);
     }
-    // Fallback: truncate the whole string
-    serde_json::json!(format!(
-        "{}...[truncated, {} chars total]",
-        &s[..MAX_TOOL_RESULT_CHARS],
-        s.len()
-    ))
+    // Fallback: truncate the whole string at a safe boundary
+    let cut = safe_truncate(&s, MAX_TOOL_RESULT_CHARS);
+    serde_json::json!(format!("{}...[truncated, {} chars total]", cut, s.len()))
 }
 
 /// Strip thinking/thought parts from conversation history to save tokens on resend.
@@ -472,7 +482,10 @@ impl AgentLoop {
         } else if self.client.router.flash_lite.can_request() {
             ModelId::Gemini25FlashLite
         } else {
-            return Ok(()); // Skip critic if no budget
+            on_event(AgentEvent::Status(
+                "Critic skipped (Flash-Lite budget exhausted)".to_string(),
+            ));
+            return Ok(());
         };
 
         on_event(AgentEvent::Status("Verifying work...".to_string()));
@@ -557,31 +570,69 @@ impl AgentLoop {
         has_complex_keyword || is_long
     }
 
-    /// Compact the conversation to reduce token usage
+    /// Compact the conversation to reduce token usage.
+    /// Keeps first message + last 6 messages for better context continuity.
+    /// Estimates remaining tokens from kept message character lengths.
     fn compact_conversation(&mut self) {
-        if self.conversation.len() <= 4 {
+        let keep_end = 6;
+        if self.conversation.len() <= keep_end + 1 {
             return;
         }
 
-        // Keep first message (context) and last 4 messages
-        let keep_start = 1;
-        let keep_end = 4;
-
-        if self.conversation.len() > keep_start + keep_end {
-            let summary = Content {
-                role: Some("user".to_string()),
-                parts: vec![Part::text(
-                    "[Previous conversation was compacted to save tokens. Continue from the recent context below.]"
-                )],
-            };
-
-            let mut new_conv = vec![self.conversation[0].clone()];
-            new_conv.push(summary);
-            let start = self.conversation.len() - keep_end;
-            new_conv.extend_from_slice(&self.conversation[start..]);
-            self.conversation = new_conv;
-            self.total_conversation_tokens = 0; // Reset, will be recalculated
+        // Build a brief summary of what was discussed in the dropped messages
+        let dropped_start = 1;
+        let dropped_end = self.conversation.len() - keep_end;
+        let mut topics = Vec::new();
+        for msg in &self.conversation[dropped_start..dropped_end] {
+            for part in &msg.parts {
+                if let Part::Text { text } = part {
+                    // Extract first line as topic hint (max 80 chars)
+                    let first_line = text.lines().next().unwrap_or("").trim();
+                    if !first_line.is_empty() && first_line.len() > 5 {
+                        let topic = safe_truncate(first_line, 80);
+                        topics.push(topic.to_string());
+                    }
+                }
+            }
         }
+
+        let summary_text = if topics.is_empty() {
+            "[Previous conversation compacted. Continue from the recent context below.]".to_string()
+        } else {
+            let topic_list: String = topics
+                .iter()
+                .take(5) // Max 5 topic hints
+                .map(|t| format!("- {}", t))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "[Previous conversation compacted. Topics discussed:\n{}\nContinue from the recent context below.]",
+                topic_list
+            )
+        };
+
+        let summary = Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text(&summary_text)],
+        };
+
+        let mut new_conv = vec![self.conversation[0].clone()];
+        new_conv.push(summary);
+        let start = self.conversation.len() - keep_end;
+        new_conv.extend_from_slice(&self.conversation[start..]);
+        self.conversation = new_conv;
+
+        // Estimate tokens from remaining content (~4 chars per token)
+        let total_chars: usize = self
+            .conversation
+            .iter()
+            .flat_map(|c| &c.parts)
+            .filter_map(|p| match p {
+                Part::Text { text } => Some(text.len()),
+                _ => None,
+            })
+            .sum();
+        self.total_conversation_tokens = (total_chars / 4) as u32;
     }
 
     pub fn rate_limit_status(&mut self) -> String {
@@ -830,18 +881,17 @@ mod tests {
 
     #[test]
     fn test_compact_large_conversation() {
-        let mut conv: Vec<Content> = (0..10)
+        let mut conv: Vec<Content> = (0..12)
             .map(|i| Content {
                 role: Some(if i % 2 == 0 { "user" } else { "model" }.to_string()),
                 parts: vec![Part::text(&format!("message {}", i))],
             })
             .collect();
 
-        // Simulate compaction: keep first + summary + last 4
-        let keep_start = 1;
-        let keep_end = 4;
+        // Simulate compaction: keep first + summary + last 6
+        let keep_end = 6;
 
-        if conv.len() > keep_start + keep_end {
+        if conv.len() > keep_end + 1 {
             let summary = Content {
                 role: Some("user".to_string()),
                 parts: vec![Part::text("[Compacted]")],
@@ -853,8 +903,8 @@ mod tests {
             conv = new_conv;
         }
 
-        // Should have: first + summary + last 4 = 6
-        assert_eq!(conv.len(), 6);
+        // Should have: first + summary + last 6 = 8
+        assert_eq!(conv.len(), 8);
         // First message preserved
         match &conv[0].parts[0] {
             Part::Text { text } => assert_eq!(text, "message 0"),
@@ -865,11 +915,25 @@ mod tests {
             Part::Text { text } => assert!(text.contains("Compacted")),
             _ => panic!("Expected text"),
         }
-        // Last 4 messages preserved
+        // Last 6 messages preserved (starting from message 6)
         match &conv[2].parts[0] {
             Part::Text { text } => assert_eq!(text, "message 6"),
             _ => panic!("Expected text"),
         }
+    }
+
+    #[test]
+    fn test_safe_truncate_ascii() {
+        assert_eq!(safe_truncate("hello world", 5), "hello");
+        assert_eq!(safe_truncate("hi", 10), "hi");
+    }
+
+    #[test]
+    fn test_safe_truncate_utf8() {
+        // Multi-byte char: don't split mid-character
+        let s = "hello\u{1F600}world"; // emoji is 4 bytes
+        let result = safe_truncate(s, 6); // would land in the middle of the emoji
+        assert_eq!(result, "hello"); // backs up to char boundary
     }
 
     // -- Planning prompt tests --
