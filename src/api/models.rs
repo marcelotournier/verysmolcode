@@ -10,6 +10,11 @@ pub enum ModelTier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
 pub enum ModelId {
+    // Gemini 3.x (newest, preferred)
+    Gemini31Pro,
+    Gemini3Flash,
+    Gemini31FlashLite,
+    // Gemini 2.5 (stable fallbacks)
     Gemini25Pro,
     Gemini25Flash,
     Gemini25FlashLite,
@@ -18,30 +23,56 @@ pub enum ModelId {
 impl ModelId {
     pub fn api_name(&self) -> &'static str {
         match self {
-            ModelId::Gemini25Pro => "gemini-2.5-pro-preview-05-06",
-            ModelId::Gemini25Flash => "gemini-2.5-flash-preview-05-20",
-            ModelId::Gemini25FlashLite => "gemini-2.0-flash-lite",
+            ModelId::Gemini31Pro => "gemini-3.1-pro-preview",
+            ModelId::Gemini3Flash => "gemini-3-flash-preview",
+            ModelId::Gemini31FlashLite => "gemini-3.1-flash-lite-preview",
+            ModelId::Gemini25Pro => "gemini-2.5-pro",
+            ModelId::Gemini25Flash => "gemini-2.5-flash",
+            ModelId::Gemini25FlashLite => "gemini-2.5-flash-lite",
         }
     }
 
     pub fn tier(&self) -> ModelTier {
         match self {
-            ModelId::Gemini25Pro => ModelTier::Pro,
-            ModelId::Gemini25Flash => ModelTier::Flash,
-            ModelId::Gemini25FlashLite => ModelTier::FlashLite,
+            ModelId::Gemini31Pro | ModelId::Gemini25Pro => ModelTier::Pro,
+            ModelId::Gemini3Flash | ModelId::Gemini25Flash => ModelTier::Flash,
+            ModelId::Gemini31FlashLite | ModelId::Gemini25FlashLite => ModelTier::FlashLite,
         }
     }
 
     pub fn display_name(&self) -> &'static str {
         match self {
+            ModelId::Gemini31Pro => "Gemini 3.1 Pro",
+            ModelId::Gemini3Flash => "Gemini 3 Flash",
+            ModelId::Gemini31FlashLite => "Gemini 3.1 Flash-Lite",
             ModelId::Gemini25Pro => "Gemini 2.5 Pro",
             ModelId::Gemini25Flash => "Gemini 2.5 Flash",
-            ModelId::Gemini25FlashLite => "Gemini 2.0 Flash-Lite",
+            ModelId::Gemini25FlashLite => "Gemini 2.5 Flash-Lite",
         }
     }
 
     pub fn supports_thinking(&self) -> bool {
-        matches!(self, ModelId::Gemini25Flash | ModelId::Gemini25FlashLite)
+        // All Flash/FlashLite models support thinking, plus Gemini 3.1 Pro
+        matches!(
+            self,
+            ModelId::Gemini3Flash
+                | ModelId::Gemini31FlashLite
+                | ModelId::Gemini31Pro
+                | ModelId::Gemini25Flash
+                | ModelId::Gemini25FlashLite
+        )
+    }
+
+    /// All known model IDs
+    pub fn all() -> &'static [ModelId] {
+        &[
+            ModelId::Gemini31Pro,
+            ModelId::Gemini3Flash,
+            ModelId::Gemini31FlashLite,
+            ModelId::Gemini25Pro,
+            ModelId::Gemini25Flash,
+            ModelId::Gemini25FlashLite,
+        ]
     }
 }
 
@@ -141,9 +172,15 @@ impl RateLimiter {
     }
 }
 
-/// Manages rate limiters for all models and picks the best available
+/// Manages rate limiters for all models and picks the best available.
+/// Gemini 3 models are preferred; falls back to 2.5 when rate-limited.
 #[derive(Debug)]
 pub struct ModelRouter {
+    // Gemini 3.x
+    pub g3_pro: RateLimiter,
+    pub g3_flash: RateLimiter,
+    pub g3_flash_lite: RateLimiter,
+    // Gemini 2.5
     pub pro: RateLimiter,
     pub flash: RateLimiter,
     pub flash_lite: RateLimiter,
@@ -158,60 +195,111 @@ impl Default for ModelRouter {
 impl ModelRouter {
     pub fn new() -> Self {
         Self {
+            g3_pro: RateLimiter::new(ModelId::Gemini31Pro),
+            g3_flash: RateLimiter::new(ModelId::Gemini3Flash),
+            g3_flash_lite: RateLimiter::new(ModelId::Gemini31FlashLite),
             pro: RateLimiter::new(ModelId::Gemini25Pro),
             flash: RateLimiter::new(ModelId::Gemini25Flash),
             flash_lite: RateLimiter::new(ModelId::Gemini25FlashLite),
         }
     }
 
+    fn limiter_mut(&mut self, model: ModelId) -> &mut RateLimiter {
+        match model {
+            ModelId::Gemini31Pro => &mut self.g3_pro,
+            ModelId::Gemini3Flash => &mut self.g3_flash,
+            ModelId::Gemini31FlashLite => &mut self.g3_flash_lite,
+            ModelId::Gemini25Pro => &mut self.pro,
+            ModelId::Gemini25Flash => &mut self.flash,
+            ModelId::Gemini25FlashLite => &mut self.flash_lite,
+        }
+    }
+
     /// Pick the best available model for a task complexity level.
+    /// Prefers Gemini 3 models, falls back to 2.5.
     /// Returns None if all models are exhausted for the day.
     pub fn pick_model(&mut self, prefer_smart: bool) -> Option<ModelId> {
         if prefer_smart {
-            // Try Pro -> Flash -> Flash-Lite
-            if self.pro.can_request() {
-                return Some(ModelId::Gemini25Pro);
-            }
-            if self.flash.can_request() {
-                return Some(ModelId::Gemini25Flash);
-            }
-            if self.flash_lite.can_request() {
-                return Some(ModelId::Gemini25FlashLite);
+            // Pro tier first (3.1 Pro -> 2.5 Pro), then Flash, then Lite
+            let order = [
+                ModelId::Gemini31Pro,
+                ModelId::Gemini25Pro,
+                ModelId::Gemini3Flash,
+                ModelId::Gemini25Flash,
+                ModelId::Gemini31FlashLite,
+                ModelId::Gemini25FlashLite,
+            ];
+            for model in order {
+                if self.limiter_mut(model).can_request() {
+                    return Some(model);
+                }
             }
         } else {
-            // Try Flash -> Flash-Lite -> Pro (save Pro for hard tasks)
-            if self.flash.can_request() {
-                return Some(ModelId::Gemini25Flash);
-            }
-            if self.flash_lite.can_request() {
-                return Some(ModelId::Gemini25FlashLite);
-            }
-            if self.pro.can_request() {
-                return Some(ModelId::Gemini25Pro);
+            // Flash first (save Pro for hard tasks)
+            let order = [
+                ModelId::Gemini3Flash,
+                ModelId::Gemini25Flash,
+                ModelId::Gemini31FlashLite,
+                ModelId::Gemini25FlashLite,
+                ModelId::Gemini31Pro,
+                ModelId::Gemini25Pro,
+            ];
+            for model in order {
+                if self.limiter_mut(model).can_request() {
+                    return Some(model);
+                }
             }
         }
         None
     }
 
     pub fn record_request(&mut self, model: ModelId) {
-        match model {
-            ModelId::Gemini25Pro => self.pro.record_request(),
-            ModelId::Gemini25Flash => self.flash.record_request(),
-            ModelId::Gemini25FlashLite => self.flash_lite.record_request(),
-        }
+        self.limiter_mut(model).record_request();
     }
 
     pub fn wait_for_model(&mut self, model: ModelId) -> Option<Duration> {
-        match model {
-            ModelId::Gemini25Pro => self.pro.wait_duration(),
-            ModelId::Gemini25Flash => self.flash.wait_duration(),
-            ModelId::Gemini25FlashLite => self.flash_lite.wait_duration(),
-        }
+        self.limiter_mut(model).wait_duration()
+    }
+
+    /// Get the next fallback model after a failure
+    pub fn fallback_for(&mut self, model: ModelId) -> Option<ModelId> {
+        // Try same tier but different generation, then lower tiers
+        let fallback_order: &[ModelId] = match model {
+            ModelId::Gemini31Pro => &[
+                ModelId::Gemini25Pro,
+                ModelId::Gemini3Flash,
+                ModelId::Gemini25Flash,
+                ModelId::Gemini31FlashLite,
+                ModelId::Gemini25FlashLite,
+            ],
+            ModelId::Gemini25Pro => &[
+                ModelId::Gemini3Flash,
+                ModelId::Gemini25Flash,
+                ModelId::Gemini31FlashLite,
+                ModelId::Gemini25FlashLite,
+            ],
+            ModelId::Gemini3Flash => &[
+                ModelId::Gemini25Flash,
+                ModelId::Gemini31FlashLite,
+                ModelId::Gemini25FlashLite,
+            ],
+            ModelId::Gemini25Flash => &[ModelId::Gemini31FlashLite, ModelId::Gemini25FlashLite],
+            ModelId::Gemini31FlashLite => &[ModelId::Gemini25FlashLite],
+            ModelId::Gemini25FlashLite => &[],
+        };
+
+        fallback_order
+            .iter()
+            .copied()
+            .find(|&fb| self.limiter_mut(fb).can_request())
     }
 
     pub fn status_line(&mut self) -> String {
         format!(
-            "Pro: {}/day | Flash: {}/day | Lite: {}/day",
+            "3Pro:{} 3F:{} 3L:{} | Pro:{} F:{} L:{}",
+            self.g3_pro.remaining_today(),
+            self.g3_flash.remaining_today(),
+            self.g3_flash_lite.remaining_today(),
             self.pro.remaining_today(),
             self.flash.remaining_today(),
             self.flash_lite.remaining_today(),

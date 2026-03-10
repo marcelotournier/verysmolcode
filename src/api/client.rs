@@ -87,29 +87,15 @@ impl GeminiClient {
 
         match self.generate(model, request) {
             Ok(resp) => Ok((resp, model)),
-            Err(e) if e.contains("429") || e.contains("rate") || e.contains("quota") => {
-                // Rate limited, try next model
-                let fallback = match model {
-                    ModelId::Gemini25Pro => {
-                        if self.router.flash.can_request() {
-                            Some(ModelId::Gemini25Flash)
-                        } else if self.router.flash_lite.can_request() {
-                            Some(ModelId::Gemini25FlashLite)
-                        } else {
-                            None
-                        }
-                    }
-                    ModelId::Gemini25Flash => {
-                        if self.router.flash_lite.can_request() {
-                            Some(ModelId::Gemini25FlashLite)
-                        } else {
-                            None
-                        }
-                    }
-                    ModelId::Gemini25FlashLite => None,
-                };
-
-                if let Some(fallback_model) = fallback {
+            Err(e)
+                if e.contains("429")
+                    || e.contains("rate")
+                    || e.contains("quota")
+                    || e.contains("503")
+                    || e.contains("high demand") =>
+            {
+                // Rate limited or overloaded, try fallback model
+                if let Some(fallback_model) = self.router.fallback_for(model) {
                     self.generate(fallback_model, request)
                         .map(|r| (r, fallback_model))
                 } else {

@@ -7,6 +7,12 @@ fn test_model_id_api_names() {
     assert!(ModelId::Gemini25Pro.api_name().contains("pro"));
     assert!(ModelId::Gemini25Flash.api_name().contains("flash"));
     assert!(ModelId::Gemini25FlashLite.api_name().contains("flash"));
+    assert_eq!(ModelId::Gemini31Pro.api_name(), "gemini-3.1-pro-preview");
+    assert_eq!(ModelId::Gemini3Flash.api_name(), "gemini-3-flash-preview");
+    assert_eq!(
+        ModelId::Gemini31FlashLite.api_name(),
+        "gemini-3.1-flash-lite-preview"
+    );
 }
 
 #[test]
@@ -14,19 +20,33 @@ fn test_model_tiers() {
     assert_eq!(ModelId::Gemini25Pro.tier(), ModelTier::Pro);
     assert_eq!(ModelId::Gemini25Flash.tier(), ModelTier::Flash);
     assert_eq!(ModelId::Gemini25FlashLite.tier(), ModelTier::FlashLite);
+    assert_eq!(ModelId::Gemini31Pro.tier(), ModelTier::Pro);
+    assert_eq!(ModelId::Gemini3Flash.tier(), ModelTier::Flash);
+    assert_eq!(ModelId::Gemini31FlashLite.tier(), ModelTier::FlashLite);
 }
 
 #[test]
 fn test_model_display_names() {
     assert!(ModelId::Gemini25Pro.display_name().contains("Pro"));
     assert!(ModelId::Gemini25Flash.display_name().contains("Flash"));
+    assert!(ModelId::Gemini31Pro.display_name().contains("3.1 Pro"));
+    assert!(ModelId::Gemini3Flash.display_name().contains("3 Flash"));
 }
 
 #[test]
 fn test_thinking_support() {
-    assert!(!ModelId::Gemini25Pro.supports_thinking());
+    assert!(!ModelId::Gemini25Pro.supports_thinking()); // 2.5 Pro doesn't
     assert!(ModelId::Gemini25Flash.supports_thinking());
     assert!(ModelId::Gemini25FlashLite.supports_thinking());
+    assert!(ModelId::Gemini31Pro.supports_thinking()); // 3.1 Pro does
+    assert!(ModelId::Gemini3Flash.supports_thinking());
+    assert!(ModelId::Gemini31FlashLite.supports_thinking());
+}
+
+#[test]
+fn test_model_all() {
+    let all = ModelId::all();
+    assert_eq!(all.len(), 6);
 }
 
 #[test]
@@ -68,36 +88,54 @@ fn test_rate_limiter_remaining() {
 fn test_model_router_picks_correct_model() {
     let mut router = ModelRouter::new();
 
-    // For smart tasks, should pick Pro first
+    // For smart tasks, should pick Gemini 3.1 Pro first
     let model = router.pick_model(true);
-    assert_eq!(model, Some(ModelId::Gemini25Pro));
+    assert_eq!(model, Some(ModelId::Gemini31Pro));
 
-    // For simple tasks, should pick Flash first
+    // For simple tasks, should pick Gemini 3 Flash first
     let model = router.pick_model(false);
-    assert_eq!(model, Some(ModelId::Gemini25Flash));
+    assert_eq!(model, Some(ModelId::Gemini3Flash));
 }
 
 #[test]
 fn test_model_router_fallback() {
     let mut router = ModelRouter::new();
 
-    // Exhaust Pro RPM
+    // Exhaust both Pro models
     for _ in 0..5 {
+        router.g3_pro.record_request();
         router.pro.record_request();
     }
 
-    // Should fall back to Flash
+    // Should fall back to Flash (Gemini 3 Flash first)
     let model = router.pick_model(true);
-    assert_eq!(model, Some(ModelId::Gemini25Flash));
+    assert_eq!(model, Some(ModelId::Gemini3Flash));
+}
+
+#[test]
+fn test_model_router_fallback_for() {
+    let mut router = ModelRouter::new();
+
+    // Fallback from 3.1 Pro should go to 2.5 Pro
+    let fb = router.fallback_for(ModelId::Gemini31Pro);
+    assert_eq!(fb, Some(ModelId::Gemini25Pro));
+
+    // Exhaust 2.5 Pro, fallback should be 3 Flash
+    for _ in 0..5 {
+        router.pro.record_request();
+    }
+    let fb = router.fallback_for(ModelId::Gemini31Pro);
+    assert_eq!(fb, Some(ModelId::Gemini3Flash));
 }
 
 #[test]
 fn test_model_router_status_line() {
     let mut router = ModelRouter::new();
     let status = router.status_line();
+    assert!(status.contains("3Pro:"));
+    assert!(status.contains("3F:"));
     assert!(status.contains("Pro:"));
-    assert!(status.contains("Flash:"));
-    assert!(status.contains("Lite:"));
+    assert!(status.contains("L:"));
 }
 
 #[test]

@@ -321,10 +321,14 @@ impl AgentLoop {
     where
         F: FnMut(AgentEvent),
     {
-        // Use Flash-Lite for the critic to save tokens
-        if !self.client.router.flash_lite.can_request() {
+        // Pick a cheap model for the critic (prefer Flash-Lite tier)
+        let critic_model = if self.client.router.g3_flash_lite.can_request() {
+            ModelId::Gemini31FlashLite
+        } else if self.client.router.flash_lite.can_request() {
+            ModelId::Gemini25FlashLite
+        } else {
             return Ok(()); // Skip critic if no budget
-        }
+        };
 
         on_event(AgentEvent::Status("Verifying work...".to_string()));
 
@@ -345,12 +349,12 @@ impl AgentLoop {
             "You are a code review critic. Verify work was done correctly. Be concise.",
             self.conversation.clone(),
             None, // No tools needed for critic
-            ModelId::Gemini25FlashLite,
+            critic_model,
             0.3, // Low temperature for consistent evaluation
             512, // Short response
         );
 
-        match self.client.generate(ModelId::Gemini25FlashLite, &request) {
+        match self.client.generate(critic_model, &request) {
             Ok(response) => {
                 if let Some(ref usage) = response.usage_metadata {
                     self.total_conversation_tokens = usage.total_token_count;
