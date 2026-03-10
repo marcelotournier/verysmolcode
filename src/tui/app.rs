@@ -112,7 +112,12 @@ impl App {
                     a
                 }
                 Err(e) => {
-                    let _ = event_tx.send(AgentEvent::Status(format!("Error: {}", e)));
+                    let hint = if e.contains("GEMINI_API_KEY") {
+                        format!("Error: {}. Set it with: export GEMINI_API_KEY=your_key", e)
+                    } else {
+                        format!("Error: {}", e)
+                    };
+                    let _ = event_tx.send(AgentEvent::Status(format!("WARN:{}", hint)));
                     let _ = done_tx.send(());
                     return;
                 }
@@ -333,9 +338,14 @@ impl App {
 
     fn send_to_agent(&mut self, input: &str) {
         if let Some(tx) = &self.agent_tx {
-            self.is_processing = true;
-            self.model_name = "Connecting...".to_string();
-            let _ = tx.send(input.to_string());
+            if tx.send(input.to_string()).is_ok() {
+                self.is_processing = true;
+                self.model_name = "Connecting...".to_string();
+            } else {
+                self.messages.push(DisplayMessage::Error(
+                    "Agent is not running. Check GEMINI_API_KEY and restart.".to_string(),
+                ));
+            }
         }
     }
 
