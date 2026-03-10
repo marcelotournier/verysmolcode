@@ -258,6 +258,38 @@ mod tests {
     }
 
     #[test]
+    fn test_config_load_returns_default_on_missing() {
+        // Config::load() should never fail — returns defaults when file is missing
+        let config = Config::load();
+        // At minimum, check it has reasonable defaults
+        assert!(config.max_tokens_per_response > 0);
+        assert!(config.temperature > 0.0);
+        assert!(config.auto_compact_threshold > 0);
+    }
+
+    #[test]
+    fn test_config_save_and_reload() {
+        // Save a custom config, then verify it can be loaded
+        let mut config = Config::default();
+        config.temperature = 0.42;
+        config.max_tokens_per_response = 2048;
+        config.command_timeout = 120;
+
+        // Save should succeed (creates config dir if needed)
+        let result = config.save();
+        assert!(result.is_ok(), "Config save failed: {:?}", result);
+
+        // Reload and verify
+        let loaded = Config::load();
+        assert_eq!(loaded.temperature, 0.42);
+        assert_eq!(loaded.max_tokens_per_response, 2048);
+        assert_eq!(loaded.command_timeout, 120);
+
+        // Restore defaults
+        Config::default().save().unwrap();
+    }
+
+    #[test]
     fn test_git_context_summary() {
         // Just verify it doesn't panic — output depends on git state
         let _context = git_context_summary();

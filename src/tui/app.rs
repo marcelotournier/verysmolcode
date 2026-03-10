@@ -2067,6 +2067,302 @@ mod tests {
         assert!(result.contains("--- Contents of Cargo.toml ---"));
     }
 
+    // -- submit_input tests (without agent) --
+
+    #[test]
+    fn test_submit_input_empty() {
+        let mut app = App::test_new();
+        app.input = "   ".to_string();
+        app.submit_input();
+        assert!(app.messages.is_empty());
+        assert!(app.input_history.is_empty());
+    }
+
+    #[test]
+    fn test_submit_input_slash_help() {
+        let mut app = App::test_new();
+        app.input = "/help".to_string();
+        app.cursor_pos = 5;
+        app.submit_input();
+        // Should add User + Assistant messages
+        assert_eq!(app.messages.len(), 2);
+        assert!(matches!(&app.messages[0], DisplayMessage::User(s) if s == "/help"));
+        assert!(matches!(&app.messages[1], DisplayMessage::Assistant(_)));
+        // Input should be cleared
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_pos, 0);
+        // Should be in history
+        assert_eq!(app.input_history, vec!["/help"]);
+    }
+
+    #[test]
+    fn test_submit_input_slash_quit() {
+        let mut app = App::test_new();
+        app.input = "/quit".to_string();
+        app.submit_input();
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_submit_input_slash_clear() {
+        let mut app = App::test_new();
+        app.messages.push(DisplayMessage::User("hello".into()));
+        app.input = "/clear".to_string();
+        app.submit_input();
+        assert!(app.messages.is_empty());
+    }
+
+    #[test]
+    fn test_submit_input_slash_plan_toggle() {
+        let mut app = App::test_new();
+        assert!(!app.planning_mode);
+        app.input = "/plan".to_string();
+        app.submit_input();
+        assert!(app.planning_mode);
+        assert!(matches!(app.messages.last(), Some(DisplayMessage::Status(s)) if s.contains("ON")));
+
+        app.input = "/plan".to_string();
+        app.cursor_pos = 5;
+        app.submit_input();
+        assert!(!app.planning_mode);
+    }
+
+    #[test]
+    fn test_submit_input_slash_tokens() {
+        let mut app = App::test_new();
+        app.total_input_tokens = 500;
+        app.total_output_tokens = 300;
+        app.input = "/tokens".to_string();
+        app.submit_input();
+        assert!(app.messages.len() >= 2);
+        if let DisplayMessage::Assistant(text) = &app.messages[1] {
+            assert!(text.contains("500"));
+            assert!(text.contains("300"));
+        }
+    }
+
+    #[test]
+    fn test_submit_input_slash_undo() {
+        let mut app = App::test_new();
+        app.input = "/undo".to_string();
+        app.submit_input();
+        // No agent_tx, so undo command won't be sent, but shouldn't crash
+        assert!(app.messages.len() >= 1);
+    }
+
+    #[test]
+    fn test_submit_input_slash_new() {
+        let mut app = App::test_new();
+        app.messages.push(DisplayMessage::User("old".into()));
+        app.total_input_tokens = 100;
+        app.input = "/new".to_string();
+        app.submit_input();
+        // Tokens reset
+        assert_eq!(app.total_input_tokens, 0);
+        assert_eq!(app.total_output_tokens, 0);
+        assert_eq!(app.conversation_tokens, 0);
+        // Should have status message about new session
+        assert!(app
+            .messages
+            .iter()
+            .any(|m| matches!(m, DisplayMessage::Status(s) if s.contains("New session"))));
+    }
+
+    #[test]
+    fn test_submit_input_slash_search_toggle() {
+        let mut app = App::test_new();
+        assert!(!app.search_grounding);
+        app.input = "/search".to_string();
+        app.submit_input();
+        assert!(app.search_grounding);
+        app.input = "/search".to_string();
+        app.cursor_pos = 7;
+        app.submit_input();
+        assert!(!app.search_grounding);
+    }
+
+    #[test]
+    fn test_submit_input_bash_mode_empty() {
+        let mut app = App::test_new();
+        app.input = "!".to_string();
+        app.submit_input();
+        assert!(app
+            .messages
+            .iter()
+            .any(|m| matches!(m, DisplayMessage::Status(s) if s.contains("Usage"))));
+    }
+
+    #[test]
+    fn test_submit_input_regular_text_no_agent() {
+        let mut app = App::test_new();
+        app.input = "fix the bug".to_string();
+        app.cursor_pos = 11;
+        app.submit_input();
+        // Should add user message
+        assert!(matches!(&app.messages[0], DisplayMessage::User(s) if s == "fix the bug"));
+        // Input should be cleared
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_pos, 0);
+        // Should be in history
+        assert_eq!(app.input_history.last(), Some(&"fix the bug".to_string()));
+    }
+
+    // -- tick tests with channels --
+
+    #[test]
+    fn test_tick_processes_text_event() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx.send(AgentEvent::Text("Hello!".into())).unwrap();
+        app.tick();
+
+        assert!(app
+            .messages
+            .iter()
+            .any(|m| matches!(m, DisplayMessage::Assistant(s) if s == "Hello!")));
+    }
+
+    #[test]
+    fn test_tick_processes_model_switch() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::ModelSwitch("Gemini 3 Flash".into()))
+            .unwrap();
+        app.tick();
+
+        assert_eq!(app.model_name, "Gemini 3 Flash");
+    }
+
+    #[test]
+    fn test_tick_processes_token_update() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::TokenUpdate {
+                input: 100,
+                output: 50,
+                total: 500,
+                thinking: 20,
+            })
+            .unwrap();
+        app.tick();
+
+        assert_eq!(app.total_input_tokens, 100);
+        assert_eq!(app.total_output_tokens, 50);
+        assert_eq!(app.total_thinking_tokens, 20);
+        assert_eq!(app.conversation_tokens, 500);
+    }
+
+    #[test]
+    fn test_tick_processes_status_rate() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::Status("RATE:Pro 3/5 RPM".into()))
+            .unwrap();
+        app.tick();
+
+        assert_eq!(app.rate_status, "Pro 3/5 RPM");
+    }
+
+    #[test]
+    fn test_tick_processes_status_warning() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::Status("WARN:Rate limit approaching".into()))
+            .unwrap();
+        app.tick();
+
+        assert!(app
+            .messages
+            .iter()
+            .any(|m| matches!(m, DisplayMessage::Error(s) if s.contains("Rate limit"))));
+    }
+
+    #[test]
+    fn test_tick_processes_done() {
+        let mut app = App::test_new();
+        let (_event_tx, event_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+        app.done_rx = Some(done_rx);
+        app.is_processing = true;
+
+        done_tx.send(()).unwrap();
+        app.tick();
+
+        assert!(!app.is_processing);
+        assert_eq!(app.model_name, "Ready");
+    }
+
+    #[test]
+    fn test_tick_processes_todo_update() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::TodoUpdate {
+                summary: "Working on tests".into(),
+                display: "1. [x] Setup\n2. [ ] Tests".into(),
+            })
+            .unwrap();
+        app.tick();
+
+        assert_eq!(app.todo_summary, "Working on tests");
+        assert!(app.todo_display.contains("Setup"));
+    }
+
+    #[test]
+    fn test_tick_processes_tool_call() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::ToolCall {
+                name: "read_file".into(),
+                args: serde_json::json!({"path": "/src/main.rs"}),
+            })
+            .unwrap();
+        app.tick();
+
+        assert!(app
+            .messages
+            .iter()
+            .any(|m| matches!(m, DisplayMessage::ToolCall(s) if s.contains("read_file"))));
+    }
+
+    #[test]
+    fn test_tick_processes_tool_result() {
+        let mut app = App::test_new();
+        let (event_tx, event_rx) = mpsc::channel();
+        app.event_rx = Some(event_rx);
+
+        event_tx
+            .send(AgentEvent::ToolResult {
+                name: "grep_search".into(),
+                result: serde_json::json!({"total_matches": 5}),
+                duration_ms: 42,
+            })
+            .unwrap();
+        app.tick();
+
+        assert!(app.messages.iter().any(|m| matches!(m, DisplayMessage::ToolResult(s) if s.contains("5 matches") && s.contains("42ms"))));
+    }
+
     #[test]
     fn test_search_prefers_recent() {
         let mut app = App::test_new();
