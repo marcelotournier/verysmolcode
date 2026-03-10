@@ -14,6 +14,7 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 - **Code Reviewer**: After tool use, reviews actual `git diff` with a structured checklist (correctness, bugs, completeness, style)
 - **Chain-of-Thought**: All 6 models use thinking tokens for better reasoning, with tier-scaled budgets (Pro 2048, Flash 1024, Lite 512)
 - **Token-Aware**: `/tokens` dashboard, `/fast`/`/smart` model selection, rate limit warnings, conversation compaction, and thinking budget control
+- **Tool Timing**: Each tool call shows execution time — helps identify bottlenecks on slow hardware
 - **Safe by Default**: Blocks destructive operations, validates paths, and prevents dangerous commands
 - **Lightweight**: ~5MB binary, minimal memory footprint, runs on Raspberry Pi 3
 
@@ -175,7 +176,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (434+ tests)
+# Unit tests (437+ tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)
