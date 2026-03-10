@@ -266,6 +266,12 @@
 - [x] Config defaults: command_timeout, compact_threshold, system_prompt, serde backwards compat, corrupted JSON
 - [x] 472 unit tests
 
+## Completed (v0.10.7)
+- [x] Ctrl+D to quit (Unix EOF convention, only when input is empty)
+- [x] Fixed MCP client BufReader data loss: persistent reader across requests
+- [x] MCP notification serialization: skip instead of sending empty string on failure
+- [x] 474 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
