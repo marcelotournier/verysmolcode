@@ -38,7 +38,7 @@
 
 # TODO / Progress Tracker
 
-## Completed (v0.7.4)
+## Completed (v0.7.7)
 - [x] Repo setup (gitignore, license, maturin/pyo3)
 - [x] Gemini API client with 6-model routing (Gemini 3.x + 2.5)
 - [x] Rate limiting with per-model RPM/RPD tracking
@@ -46,7 +46,7 @@
 - [x] TUI: blue theme, input history, slash commands, scrolling
 - [x] Agent loop with automatic model fallback (503/429 aware)
 - [x] Deep fallback chain: tries ALL 6 models before giving up
-- [x] Critic verification (cheapest available model reviews completed work)
+- [x] Critic verification (cheapest available model reviews completed work, only when files modified)
 - [x] Planning mode (/plan) with read-only tools
 - [x] Chain-of-thought for Flash and Gemini 3.1 Pro models (thinkingConfig)
 - [x] Safety: blocks destructive ops, validates paths
@@ -54,77 +54,52 @@
 - [x] MCP server management (/mcp, /mcp-add, /mcp-rm)
 - [x] Image reading tool (base64 encode + send as InlineData to Gemini)
 - [x] Pre-commit hooks (fmt, clippy, tests)
-- [x] 90 unit tests across 5 test files
+- [x] 93 unit tests across 5 test files
 - [x] Integration test (tmux + bottle.py todo app - continue-on-error, API-dependent)
 - [x] README.md documentation
 - [x] CI/CD pipeline: test -> build-wheels -> test-wheel -> publish-pypi
 - [x] Rayon parallelism for grep_search and find_files (leverages multi-core on RPi3)
-- [x] GitHub releases (v0.2.0 through v0.7.4)
-- [x] PyPI publishing pipeline (sdist works, wheel builds need TLS fix)
-
-## In Progress - Token Consumption Optimization (HIGH PRIORITY)
-- [ ] Audit and reduce unnecessary token usage in agent loop
-  - Current: Each iteration clones and sends FULL conversation history
-  - Current: max_tokens_per_response=4096, auto_compact at 24K tokens
-  - Current: Critic sends full conversation again after tool use
-  - Issue: Pro only has 25 req/day, Flash 250/day - every wasted request hurts
-- [ ] Add token budget awareness to the agent loop
-  - Show remaining requests in TUI prominently
-  - Warn user when approaching daily limits
-  - Let user choose model tier per request (/fast, /smart)
-- [ ] Smarter conversation compaction
-  - Compact tool results aggressively (keep only summaries, not full file contents)
-  - Prune thinking tokens from history before resending
-  - Truncate large tool results (e.g. grep with 50 matches)
-- [ ] Add /tokens slash command to show detailed usage breakdown
-
-## In Progress - ARM Binary Distribution (HIGH PRIORITY)
-- [ ] Fix ARM wheel cross-compilation in CI
-  - ring crate fails in manylinux Docker for aarch64 (#error "ARM assembler must define __ARM_ARCH")
-  - native-tls approach fails because manylinux lacks OpenSSL dev headers
-  - Options to explore: (1) set CFLAGS=-D__ARM_ARCH=8 for ring, (2) vendored-openssl, (3) before-script-linux to install openssl-dev
-  - RPi3 native build works (builds with ring/rustls natively on aarch64)
-- [ ] Verify pip install installs binary wheel (not sdist) on RPi3
-  - User has Python 3.13 and RPi3 (aarch64, Debian)
-  - Must use venv for testing
-- [ ] Consider building wheels natively on RPi or ARM CI runner as fallback
+- [x] GitHub releases (v0.2.0 through v0.7.7)
+- [x] PyPI publishing with binary wheels for x86_64, aarch64, armv7
+- [x] Token optimization: truncation, thinking stripping, conditional critic, tier-scaled budgets
+- [x] /tokens and /status commands (show usage locally, no API call wasted)
+- [x] Enhanced status bar: In/Out/Ctx token breakdown
+- [x] Wait-and-retry: waits up to 15s for RPM limit before falling back to weaker model
+- [x] ARM wheel cross-compilation via manylinux_2_28 + Python 3.13 pin
+- [x] RPi3 pip install verified: downloads binary wheel (1.3MB), no compilation needed
 
 ## Planned
-- [ ] Token usage dashboard in TUI
-- [ ] Configuration editing via slash commands (/config set)
+- [ ] Configuration editing via slash commands (/config set temperature 0.5)
+- [ ] User-selectable model tier (/fast, /smart) per request
+- [ ] Warn user when approaching daily limits (e.g. <5 Pro requests remaining)
 - [ ] Increase test coverage toward 100%
-- [ ] Wait-and-retry when per-minute rate limit hit (instead of immediate fallback to weaker model)
+- [ ] GitHub Release notes with gh release create
 
 # Lessons Learned
 
-## TLS Crate Selection for Cross-Platform Builds
-- **rustls** (via ring): Works perfectly for ALL native builds (x86_64, aarch64, armv7). Fails to cross-compile for ARM in manylinux Docker containers due to ring's assembly requirements.
-- **native-tls** (via openssl): Requires OpenSSL dev headers at compile time AND OpenSSL library at runtime. Fails in manylinux Docker (no openssl-dev). Also produced "no TLS backend" errors on local machine (v0.7.2-0.7.3 were broken).
-- **Conclusion**: Use rustls (ureq default features) for the binary. Solve cross-compilation separately with CFLAGS or vendored OpenSSL for manylinux Docker builds.
+## TLS Crate Selection
+- Use **rustls** (ureq default features). native-tls breaks local builds AND manylinux Docker.
+- ARM cross-compile: use **manylinux_2_28** (newer GCC defines __ARM_ARCH for ring).
 
-## Gemini API Rate Limits Are Harsh
-- Pro: 5 RPM, 25 RPD - extremely limited. A single complex task with 10+ tool iterations burns nearly half the daily budget.
-- Flash: 10 RPM, 250 RPD - more workable but still tight.
-- Flash-Lite: 15 RPM, 1000 RPD - most budget but least capable.
-- All 6 models have independent limits, giving ~2550 total requests/day.
-- The 3.x preview models may have different/stricter limits than documented. When ALL 6 models return 429, the API key's global quota may be exhausted.
-- Integration tests are inherently flaky because they depend on API availability.
+## Gemini API Rate Limits
+- Pro: 5 RPM, 25 RPD. Flash: 10 RPM, 250 RPD. Lite: 15 RPM, 1000 RPD.
+- All 6 models independent limits = ~2550 total req/day.
+- Wait-and-retry (up to 15s) for RPM limits keeps quality vs falling back to weaker model.
+- Integration tests are flaky (API quota dependent) - use continue-on-error.
 
-## Agent Loop Token Consumption
-- The agent loop sends full conversation history on EVERY iteration (up to 15 iterations).
-- Tool results (especially grep, read_file) can be very large and stay in conversation history.
-- The critic step adds another full-conversation API call after the agent completes.
-- Auto-compact at 24K tokens helps but doesn't prevent large intermediate states.
-- Need aggressive truncation of tool results and conversation pruning to stay within budget.
+## Token Optimization (v0.7.5+)
+- Truncate tool results > 8K chars before adding to conversation.
+- Strip thinking tokens from history before resending.
+- Scale thinking budget by tier: Pro 2048, Flash 1024, FlashLite 512.
+- Only use Pro on first iteration; Flash for follow-ups.
+- Conditional critic: only runs when files_modified is true.
+- /tokens and /status show local cached data (no API call).
 
-## RPi3 Build Considerations
-- RPi3 has 906MB RAM, Cortex-A53 (4 cores). Release builds with LTO use ~422MB RAM.
-- Build needs 2GB swap file to complete. /tmp is 100MB tmpfs - must build in home dir.
-- serde_derive takes ~5 min to compile, full build takes ~30+ min with -j1.
-- Rayon leverages all 4 cores for grep/find, good for runtime performance.
-- Native aarch64 build with ring/rustls works fine - only cross-compilation fails.
+## PyO3/Maturin Wheel Builds
+- PyO3 0.23 max Python 3.13. Manylinux images now ship 3.14.
+- Fix: pin `-i python3.13` in maturin args. Match test-wheel Python version too.
+- fail-fast: false in CI matrix so one arch failure doesn't cancel others.
 
-## CI Pipeline Design
-- Integration test depends on Gemini API availability. Made it continue-on-error so wheel builds aren't blocked.
-- Wheel builds only depend on unit tests (deterministic) not integration test (flaky).
-- matrix strategy with fail-fast means one arch failure cancels all others. May want to set fail-fast: false.
+## RPi3
+- 906MB RAM, 4-core Cortex-A53. Native build works, ~30 min with -j1.
+- pip install gets binary wheel (1.3MB), no compilation needed.

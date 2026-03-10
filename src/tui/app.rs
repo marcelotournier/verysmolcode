@@ -115,6 +115,16 @@ impl App {
                     let _ = done_tx.send(());
                     continue;
                 }
+                if user_input == "/_override_fast" {
+                    agent.model_override = crate::agent::loop_runner::ModelOverride::Fast;
+                    let _ = done_tx.send(());
+                    continue;
+                }
+                if user_input == "/_override_smart" {
+                    agent.model_override = crate::agent::loop_runner::ModelOverride::Smart;
+                    let _ = done_tx.send(());
+                    continue;
+                }
 
                 let event_tx_clone = event_tx.clone();
                 let result = agent.process_message(&user_input, move |event| {
@@ -130,6 +140,11 @@ impl App {
                     "RATE:{}",
                     agent.rate_limit_status()
                 )));
+
+                // Warn if approaching limits
+                if let Some(warning) = agent.rate_limit_warning() {
+                    let _ = event_tx.send(AgentEvent::Status(format!("WARN:{}", warning)));
+                }
 
                 let _ = done_tx.send(());
             }
@@ -192,6 +207,17 @@ impl App {
                     self.messages.push(DisplayMessage::User(input.clone()));
                     self.messages
                         .push(DisplayMessage::Assistant(self.token_summary()));
+                }
+                CommandResponse::SetModelOverride(mode) => {
+                    // Send override command to agent thread
+                    if let Some(tx) = &self.agent_tx {
+                        let _ = tx.send(format!("/_override_{}", mode));
+                    }
+                    let label = if mode == "fast" { "Flash/Lite" } else { "Pro" };
+                    self.messages.push(DisplayMessage::Status(format!(
+                        "Next message will use {} models",
+                        label
+                    )));
                 }
             }
         } else {
@@ -289,6 +315,10 @@ impl App {
                 AgentEvent::Status(s) => {
                     if let Some(rate) = s.strip_prefix("RATE:") {
                         self.rate_status = rate.to_string();
+                    } else if let Some(warning) = s.strip_prefix("WARN:") {
+                        self.messages
+                            .push(DisplayMessage::Error(warning.to_string()));
+                        needs_scroll = true;
                     } else {
                         self.messages.push(DisplayMessage::Status(s));
                         needs_scroll = true;
@@ -403,6 +433,7 @@ pub enum CommandResponse {
     SendToAgent(String),
     TogglePlan,
     ShowTokens,
+    SetModelOverride(String), // "fast" or "smart"
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {

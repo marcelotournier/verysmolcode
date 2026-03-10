@@ -181,6 +181,54 @@ fn test_autocomplete_mcp() {
 }
 
 #[test]
+fn test_fast_command() {
+    assert!(matches!(
+        handle_command("/fast"),
+        verysmolcode::tui::app::CommandResponse::SetModelOverride(_)
+    ));
+    assert!(matches!(
+        handle_command("/f"),
+        verysmolcode::tui::app::CommandResponse::SetModelOverride(_)
+    ));
+}
+
+#[test]
+fn test_smart_command() {
+    assert!(matches!(
+        handle_command("/smart"),
+        verysmolcode::tui::app::CommandResponse::SetModelOverride(_)
+    ));
+    assert!(matches!(
+        handle_command("/s"),
+        verysmolcode::tui::app::CommandResponse::SetModelOverride(_)
+    ));
+}
+
+#[test]
+fn test_config_set_temperature() {
+    let msg = get_message("/config set temperature 0.5");
+    assert!(msg.contains("Temperature set to"));
+}
+
+#[test]
+fn test_config_set_invalid() {
+    let msg = get_message("/config set temperature abc");
+    assert!(msg.contains("Error"));
+}
+
+#[test]
+fn test_config_set_unknown_key() {
+    let msg = get_message("/config set badkey 123");
+    assert!(msg.contains("Unknown key"));
+}
+
+#[test]
+fn test_config_set_no_value() {
+    let msg = get_message("/config set temperature");
+    assert!(msg.contains("Usage"));
+}
+
+#[test]
 fn test_case_insensitive_commands() {
     // Commands should be case-insensitive
     assert!(matches!(

@@ -4,10 +4,15 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/help", "Show available commands"),
     ("/clear", "Clear conversation and screen"),
     ("/quit", "Exit VerySmolCode"),
+    (
+        "/fast",
+        "Use Flash models for next message (saves Pro budget)",
+    ),
+    ("/smart", "Use Pro models for next message (best quality)"),
     ("/plan", "Toggle planning mode (read-only, uses Pro model)"),
     ("/tokens", "Show detailed token usage and rate limits"),
     ("/status", "Show rate limits and token usage"),
-    ("/config", "Show current configuration"),
+    ("/config", "Show/set config: /config set <key> <value>"),
     ("/compact", "Manually compact conversation to save tokens"),
     ("/model", "Show available models and current selection"),
     ("/mcp", "List configured MCP servers"),
@@ -40,28 +45,98 @@ pub fn handle_command(input: &str) -> CommandResponse {
         }
         "/quit" | "/q" | "/exit" => CommandResponse::Quit,
         "/clear" => CommandResponse::Clear,
+        "/fast" | "/f" => CommandResponse::SetModelOverride("fast".to_string()),
+        "/smart" | "/s" => CommandResponse::SetModelOverride("smart".to_string()),
         "/plan" => CommandResponse::TogglePlan,
         "/tokens" | "/status" => CommandResponse::ShowTokens,
         "/config" => {
-            let config = crate::config::Config::load();
-            let msg = format!(
-                "Current configuration:\n\
-                 Max tokens/response: {}\n\
-                 Max conversation tokens: {}\n\
-                 Temperature: {}\n\
-                 Auto-compact threshold: {}\n\
-                 Safety checks: {}",
-                config.max_tokens_per_response,
-                config.max_conversation_tokens,
-                config.temperature,
-                config.auto_compact_threshold,
-                if config.safety_enabled {
-                    "enabled"
-                } else {
-                    "disabled"
-                },
-            );
-            CommandResponse::Message(msg)
+            if let Some(set_rest) = args.strip_prefix("set ") {
+                let set_args: Vec<&str> = set_rest.splitn(2, ' ').collect();
+                if set_args.len() < 2 {
+                    return CommandResponse::Message(
+                        "Usage: /config set <key> <value>\n\
+                         Keys: temperature, max_tokens, compact_threshold, safety"
+                            .to_string(),
+                    );
+                }
+                let key = set_args[0];
+                let val = set_args[1].trim();
+                let mut config = crate::config::Config::load();
+                let result = match key {
+                    "temperature" | "temp" => val
+                        .parse::<f32>()
+                        .map(|v| {
+                            config.temperature = v.clamp(0.0, 2.0);
+                            format!("Temperature set to {}", config.temperature)
+                        })
+                        .map_err(|_| "Invalid number".to_string()),
+                    "max_tokens" => val
+                        .parse::<u32>()
+                        .map(|v| {
+                            config.max_tokens_per_response = v.clamp(256, 65536);
+                            format!(
+                                "Max tokens/response set to {}",
+                                config.max_tokens_per_response
+                            )
+                        })
+                        .map_err(|_| "Invalid number".to_string()),
+                    "compact_threshold" => val
+                        .parse::<u32>()
+                        .map(|v| {
+                            config.auto_compact_threshold = v.clamp(4000, 128000);
+                            format!(
+                                "Auto-compact threshold set to {}",
+                                config.auto_compact_threshold
+                            )
+                        })
+                        .map_err(|_| "Invalid number".to_string()),
+                    "safety" => match val {
+                        "on" | "true" | "enabled" => {
+                            config.safety_enabled = true;
+                            Ok("Safety checks enabled".to_string())
+                        }
+                        "off" | "false" | "disabled" => {
+                            config.safety_enabled = false;
+                            Ok("Safety checks disabled".to_string())
+                        }
+                        _ => Err("Use: on/off".to_string()),
+                    },
+                    _ => Err(format!(
+                        "Unknown key: {}. Valid: temperature, max_tokens, compact_threshold, safety",
+                        key
+                    )),
+                };
+                match result {
+                    Ok(msg) => {
+                        let _ = config.save();
+                        CommandResponse::Message(msg)
+                    }
+                    Err(e) => CommandResponse::Message(format!("Error: {}", e)),
+                }
+            } else {
+                let config = crate::config::Config::load();
+                let msg = format!(
+                    "Current configuration:\n\
+                     Max tokens/response: {}\n\
+                     Max conversation tokens: {}\n\
+                     Temperature: {}\n\
+                     Auto-compact threshold: {}\n\
+                     Safety checks: {}\n\
+                     \n\
+                     Use /config set <key> <value> to change.\n\
+                     Keys: temperature, max_tokens, compact_threshold, safety",
+                    config.max_tokens_per_response,
+                    config.max_conversation_tokens,
+                    config.temperature,
+                    config.auto_compact_threshold,
+                    if config.safety_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    },
+                );
+                CommandResponse::Message(msg)
+            }
         }
         "/compact" => CommandResponse::Message("Conversation compacted.".to_string()),
         "/model" => {

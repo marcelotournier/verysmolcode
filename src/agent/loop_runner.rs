@@ -16,6 +16,14 @@ pub struct AgentMessage {
     pub is_thinking: bool,
 }
 
+/// Override for model selection on next request
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelOverride {
+    None,
+    Fast,  // Force Flash/Lite models
+    Smart, // Force Pro models
+}
+
 /// The main agent loop that processes user input through the Gemini API
 pub struct AgentLoop {
     client: GeminiClient,
@@ -25,6 +33,7 @@ pub struct AgentLoop {
     planning_mode: bool,
     mcp_clients: Vec<McpClient>,
     files_modified: bool, // Track if any write/edit tools were used this turn
+    pub model_override: ModelOverride,
 }
 
 /// Max characters for a single tool result before truncation.
@@ -125,6 +134,7 @@ impl AgentLoop {
             planning_mode: false,
             mcp_clients,
             files_modified: false,
+            model_override: ModelOverride::None,
         })
     }
 
@@ -213,8 +223,14 @@ impl AgentLoop {
             parts: vec![Part::text(user_input)],
         });
 
-        // In planning mode, always prefer Pro models
-        let prefer_smart = self.planning_mode || self.is_complex_task(user_input);
+        // Determine model preference: override > planning mode > auto-detect
+        let prefer_smart = match self.model_override {
+            ModelOverride::Smart => true,
+            ModelOverride::Fast => false,
+            ModelOverride::None => self.planning_mode || self.is_complex_task(user_input),
+        };
+        // Reset override after use (one-shot)
+        self.model_override = ModelOverride::None;
         self.files_modified = false;
 
         // Main agent loop - keeps going until no more tool calls
@@ -547,6 +563,32 @@ impl AgentLoop {
 
     pub fn rate_limit_status(&mut self) -> String {
         self.client.router.status_line()
+    }
+
+    /// Check if any model tier is running low and return a warning message
+    pub fn rate_limit_warning(&mut self) -> Option<String> {
+        let router = &mut self.client.router;
+        let pro_left = router.g3_pro.remaining_today() + router.pro.remaining_today();
+        let flash_left = router.g3_flash.remaining_today() + router.flash.remaining_today();
+
+        if pro_left == 0 && flash_left == 0 {
+            Some(
+                "All Pro and Flash models exhausted for today. Only Flash-Lite available."
+                    .to_string(),
+            )
+        } else if pro_left == 0 {
+            Some(format!(
+                "Pro models exhausted. {} Flash requests remaining.",
+                flash_left
+            ))
+        } else if pro_left <= 5 {
+            Some(format!(
+                "Low Pro budget: {} requests left. Use /fast to save Pro for complex tasks.",
+                pro_left
+            ))
+        } else {
+            None
+        }
     }
 
     pub fn token_usage(&self) -> String {
