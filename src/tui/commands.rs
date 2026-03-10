@@ -67,11 +67,14 @@ pub fn handle_command(input: &str) -> CommandResponse {
         "/compact" => CommandResponse::Message("Conversation compacted.".to_string()),
         "/model" => {
             let msg = "Available models (Gemini Free Tier):\n\n\
-                       Gemini 2.5 Pro      - 5 RPM, 25 RPD  (complex tasks)\n\
-                       Gemini 2.5 Flash    - 10 RPM, 250 RPD (general tasks)\n\
-                       Gemini 2.0 Flash-Lite - 15 RPM, 1000 RPD (simple tasks)\n\n\
-                       Model is automatically selected based on task complexity.\n\
-                       Falls back to simpler models when rate limits are hit.";
+                       Gemini 3.1 Pro        - 5 RPM,  25 RPD  (complex tasks)\n\
+                       Gemini 3 Flash        - 10 RPM, 250 RPD (general tasks)\n\
+                       Gemini 3.1 Flash-Lite - 15 RPM, 1000 RPD (simple tasks)\n\
+                       Gemini 2.5 Pro        - 5 RPM,  25 RPD  (fallback complex)\n\
+                       Gemini 2.5 Flash      - 10 RPM, 250 RPD (fallback general)\n\
+                       Gemini 2.5 Flash-Lite - 15 RPM, 1000 RPD (fallback simple)\n\n\
+                       Gemini 3 models preferred. Falls back to 2.5 when rate-limited.\n\
+                       Each model has independent limits, doubling effective daily quota.";
             CommandResponse::Message(msg.to_string())
         }
         "/mcp" => {

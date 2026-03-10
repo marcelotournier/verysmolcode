@@ -77,8 +77,10 @@ fn test_config_command() {
 #[test]
 fn test_model_command() {
     let msg = get_message("/model");
-    assert!(msg.contains("Pro"));
-    assert!(msg.contains("Flash"));
+    assert!(msg.contains("3.1 Pro"));
+    assert!(msg.contains("3 Flash"));
+    assert!(msg.contains("2.5 Pro"));
+    assert!(msg.contains("2.5 Flash"));
 }
 
 #[test]
