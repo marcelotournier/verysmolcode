@@ -1,4 +1,5 @@
 use crate::api::client::{build_request, extract_response, GeminiClient};
+use crate::api::models::ModelId;
 use crate::api::types::*;
 use crate::config::Config;
 use crate::tools::registry::ToolRegistry;
@@ -84,6 +85,7 @@ impl AgentLoop {
         // Main agent loop - keeps going until no more tool calls
         // Planning mode gets fewer iterations (just reading + planning)
         let max_iterations = if self.planning_mode { 8 } else { 15 };
+        let mut had_tool_calls = false;
         for iteration in 0..max_iterations {
             // Check if we need to compact conversation
             if self.total_conversation_tokens > self.config.auto_compact_threshold {
@@ -165,6 +167,7 @@ impl AgentLoop {
             }
 
             // Execute tool calls
+            had_tool_calls = true;
             let mut function_responses = Vec::new();
             for call in &function_calls {
                 on_event(AgentEvent::ToolCall {
@@ -198,6 +201,76 @@ impl AgentLoop {
                 role: Some("user".to_string()),
                 parts: function_responses,
             });
+        }
+
+        // Run critic check if we used tools (not in planning mode)
+        if !self.planning_mode && had_tool_calls {
+            self.run_critic(user_input, &mut on_event)?;
+        }
+
+        Ok(())
+    }
+
+    /// Critic step: verify the work was actually done correctly
+    fn run_critic<F>(&mut self, original_task: &str, on_event: &mut F) -> Result<(), String>
+    where
+        F: FnMut(AgentEvent),
+    {
+        // Use Flash-Lite for the critic to save tokens
+        if !self.client.router.flash_lite.can_request() {
+            return Ok(()); // Skip critic if no budget
+        }
+
+        on_event(AgentEvent::Status("Verifying work...".to_string()));
+
+        let critic_prompt = format!(
+            "Review if the following task was completed correctly:\n\nTask: {}\n\n\
+             Check the recent conversation and tool results. Was the task fully completed? \
+             If yes, say 'VERIFIED: [brief summary]'. \
+             If not, say 'INCOMPLETE: [what's missing]' and suggest next steps.",
+            original_task
+        );
+
+        self.conversation.push(Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text(&critic_prompt)],
+        });
+
+        let request = build_request(
+            "You are a code review critic. Verify work was done correctly. Be concise.",
+            self.conversation.clone(),
+            None, // No tools needed for critic
+            ModelId::Gemini25FlashLite,
+            0.3, // Low temperature for consistent evaluation
+            512, // Short response
+        );
+
+        match self.client.generate(ModelId::Gemini25FlashLite, &request) {
+            Ok(response) => {
+                if let Some(ref usage) = response.usage_metadata {
+                    self.total_conversation_tokens = usage.total_token_count;
+                }
+
+                let (texts, _) = extract_response(&response);
+                for text in &texts {
+                    if !text.trim().is_empty() {
+                        on_event(AgentEvent::Status(format!("Critic: {}", text)));
+                    }
+                }
+
+                // Add critic response to conversation
+                if let Some(candidate) = response.candidates.first() {
+                    if let Some(ref content) = candidate.content {
+                        self.conversation.push(content.clone());
+                    }
+                }
+            }
+            Err(_) => {
+                // Critic failure is non-fatal
+                on_event(AgentEvent::Status(
+                    "Critic check skipped (rate limit)".to_string(),
+                ));
+            }
         }
 
         Ok(())
