@@ -364,16 +364,18 @@ impl App {
                             .map(|(k, v)| {
                                 let val = match v {
                                     serde_json::Value::String(s) => {
-                                        if s.len() > 60 {
-                                            format!("{}...", &s[..57])
+                                        if s.chars().count() > 60 {
+                                            let t: String = s.chars().take(57).collect();
+                                            format!("{}...", t)
                                         } else {
                                             s.clone()
                                         }
                                     }
                                     other => {
                                         let s = other.to_string();
-                                        if s.len() > 60 {
-                                            format!("{}...", &s[..57])
+                                        if s.chars().count() > 60 {
+                                            let t: String = s.chars().take(57).collect();
+                                            format!("{}...", t)
                                         } else {
                                             s
                                         }
@@ -671,8 +673,9 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
         }
         "git_status" | "git_diff" | "git_log" | "git_commit" | "git_push" | "git_pull" => {
             let output = result.get("output").and_then(|v| v.as_str()).unwrap_or("");
-            let summary = if output.len() > 100 {
-                format!("{}...", &output[..97])
+            let summary = if output.chars().count() > 100 {
+                let t: String = output.chars().take(97).collect();
+                format!("{}...", t)
             } else {
                 output.to_string()
             };
@@ -691,10 +694,11 @@ fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
                 format!("[cmd] Exit code: {}", exit_code)
             } else {
                 let stderr = result.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
-                let summary = if stderr.len() > 80 {
-                    &stderr[..77]
+                let summary = if stderr.chars().count() > 80 {
+                    let t: String = stderr.chars().take(77).collect();
+                    format!("{}...", t)
                 } else {
-                    stderr
+                    stderr.to_string()
                 };
                 format!("[cmd] Failed ({}): {}", exit_code, summary)
             }
