@@ -77,32 +77,48 @@ pub fn web_fetch(args: &Value) -> Value {
     }
 }
 
-/// Simple HTML tag stripper - removes tags and collapses whitespace
+/// Simple HTML tag stripper - removes tags and collapses whitespace.
+/// Uses byte-level scanning for ASCII tags to avoid allocating Vec<char>.
 fn strip_html_tags(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
+    let mut result = String::with_capacity(html.len() / 2);
+    let bytes = html.as_bytes();
+    let len = bytes.len();
     let mut in_tag = false;
     let mut in_script = false;
     let mut last_was_space = false;
-
-    let lower = html.to_lowercase();
-    let chars: Vec<char> = html.chars().collect();
-    let lower_chars: Vec<char> = lower.chars().collect();
-
     let mut i = 0;
-    while i < chars.len() {
-        if !in_tag && i + 7 < lower_chars.len() {
-            let slice: String = lower_chars[i..i + 7].iter().collect();
-            if slice == "<script" {
-                in_script = true;
-            }
+
+    while i < len {
+        // Check for <script (case-insensitive, ASCII only)
+        if !in_tag
+            && !in_script
+            && i + 7 <= len
+            && bytes[i] == b'<'
+            && bytes[i + 1..i + 7]
+                .iter()
+                .zip(b"script")
+                .all(|(a, b)| a.to_ascii_lowercase() == *b)
+        {
+            in_script = true;
+            in_tag = true;
+            i += 1;
+            continue;
         }
-        if in_script && i + 9 < lower_chars.len() {
-            let slice: String = lower_chars[i..i + 9].iter().collect();
-            if slice == "</script>" {
-                in_script = false;
-                i += 9;
-                continue;
-            }
+        // Check for </script> (case-insensitive)
+        if in_script
+            && i + 9 <= len
+            && bytes[i] == b'<'
+            && bytes[i + 1] == b'/'
+            && bytes[i + 2..i + 8]
+                .iter()
+                .zip(b"script")
+                .all(|(a, b)| a.to_ascii_lowercase() == *b)
+            && bytes[i + 8] == b'>'
+        {
+            in_script = false;
+            in_tag = false;
+            i += 9;
+            continue;
         }
 
         if in_script {
@@ -110,9 +126,9 @@ fn strip_html_tags(html: &str) -> String {
             continue;
         }
 
-        match chars[i] {
-            '<' => in_tag = true,
-            '>' => {
+        match bytes[i] {
+            b'<' => in_tag = true,
+            b'>' => {
                 in_tag = false;
                 if !last_was_space {
                     result.push(' ');
@@ -120,7 +136,28 @@ fn strip_html_tags(html: &str) -> String {
                 }
             }
             _ if !in_tag => {
-                let c = chars[i];
+                // Safe: we're checking single bytes against ASCII, but for
+                // multi-byte UTF-8 chars we just push them through as-is
+                let c = if bytes[i].is_ascii() {
+                    bytes[i] as char
+                } else {
+                    // Decode the full UTF-8 char
+                    let s = &html[i..];
+                    let ch = s.chars().next().unwrap_or(' ');
+                    let ch_len = ch.len_utf8();
+                    if ch.is_whitespace() {
+                        if !last_was_space {
+                            result.push(' ');
+                            last_was_space = true;
+                        }
+                        i += ch_len;
+                        continue;
+                    }
+                    result.push(ch);
+                    last_was_space = false;
+                    i += ch_len;
+                    continue;
+                };
                 if c.is_whitespace() {
                     if !last_was_space {
                         result.push(' ');
@@ -219,5 +256,24 @@ mod tests {
     fn test_web_fetch_ftp_scheme_blocked() {
         let result = web_fetch(&json!({"url": "ftp://files.example.com/data.txt"}));
         assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_strip_html_multibyte() {
+        let html = "<p>\u{1F600} Hello \u{1F389} World</p>";
+        let result = strip_html_tags(html);
+        assert!(result.contains("\u{1F600}"));
+        assert!(result.contains("\u{1F389}"));
+        assert!(result.contains("Hello"));
+        assert!(!result.contains("<"));
+    }
+
+    #[test]
+    fn test_strip_html_script_case_insensitive() {
+        let html = "<p>Before</p><SCRIPT>bad();</SCRIPT><p>After</p>";
+        let result = strip_html_tags(html);
+        assert!(result.contains("Before"));
+        assert!(result.contains("After"));
+        assert!(!result.contains("bad"));
     }
 }

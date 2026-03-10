@@ -221,6 +221,12 @@
 - [x] README: updated test count, added utils.rs to architecture
 - [x] 458 unit tests
 
+## Completed (v0.10.2)
+- [x] System prompt reduced ~80% (2700→500 bytes, saves ~550 tokens per request)
+- [x] HTML stripper rewritten: byte-level scanning avoids double Vec<char> allocation
+- [x] 2 new HTML tests: multibyte emoji content, case-insensitive SCRIPT tags
+- [x] 462 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
