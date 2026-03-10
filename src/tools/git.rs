@@ -223,23 +223,25 @@ pub fn run_shell(args: &Value) -> Value {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    // Truncate long output at a safe char boundary
+                    // Truncate long output at safe char boundaries
                     let max_len = 10_000;
-                    let stdout_str = if stdout.len() > max_len {
-                        let mut end = max_len;
-                        while end > 0 && !stdout.is_char_boundary(end) {
-                            end -= 1;
+                    let truncate = |s: &str| -> String {
+                        if s.len() > max_len {
+                            let mut end = max_len;
+                            while end > 0 && !s.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            format!("{}...(truncated)", &s[..end])
+                        } else {
+                            s.to_string()
                         }
-                        format!("{}...(truncated)", &stdout[..end])
-                    } else {
-                        stdout.to_string()
                     };
 
                     json!({
                         "success": output.status.success(),
                         "exit_code": output.status.code(),
-                        "stdout": stdout_str.trim(),
-                        "stderr": stderr.trim()
+                        "stdout": truncate(stdout.trim()),
+                        "stderr": truncate(stderr.trim())
                     })
                 }
                 Err(e) => json!({"error": e}),
