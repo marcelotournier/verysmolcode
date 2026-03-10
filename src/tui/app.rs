@@ -373,6 +373,25 @@ impl App {
                         let _ = tx.send(cmd.to_string());
                     }
                 }
+                CommandResponse::CopyLast => {
+                    if let Some(text) = self.last_assistant_message() {
+                        match Self::copy_to_clipboard(&text) {
+                            Ok(()) => {
+                                self.messages.push(DisplayMessage::Status(
+                                    "Copied to clipboard!".to_string(),
+                                ));
+                            }
+                            Err(e) => {
+                                self.messages
+                                    .push(DisplayMessage::Error(format!("Copy failed: {}", e)));
+                            }
+                        }
+                    } else {
+                        self.messages.push(DisplayMessage::Status(
+                            "No assistant response to copy.".to_string(),
+                        ));
+                    }
+                }
                 CommandResponse::Compact => {
                     if let Some(tx) = &self.agent_tx {
                         let _ = tx.send("/_compact".to_string());
@@ -738,6 +757,51 @@ impl App {
             .cloned()
     }
 
+    fn last_assistant_message(&self) -> Option<String> {
+        self.messages.iter().rev().find_map(|m| match m {
+            DisplayMessage::Assistant(text) => Some(text.clone()),
+            _ => None,
+        })
+    }
+
+    fn copy_to_clipboard(text: &str) -> Result<(), String> {
+        // Try platform-specific clipboard commands
+        let commands = if cfg!(target_os = "macos") {
+            vec![("pbcopy", vec![])]
+        } else if cfg!(target_os = "windows") {
+            vec![("clip", vec![])]
+        } else {
+            // Linux: try xclip first, then xsel, then wl-copy (Wayland)
+            vec![
+                ("xclip", vec!["-selection", "clipboard"]),
+                ("xsel", vec!["--clipboard", "--input"]),
+                ("wl-copy", vec![]),
+            ]
+        };
+
+        for (cmd, args) in &commands {
+            if let Ok(mut child) = std::process::Command::new(cmd)
+                .args(args)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                use std::io::Write;
+                if let Some(ref mut stdin) = child.stdin {
+                    if stdin.write_all(text.as_bytes()).is_ok() {
+                        drop(child.stdin.take());
+                        if child.wait().is_ok() {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err("No clipboard tool found. Install xclip, xsel, or wl-copy.".to_string())
+    }
+
     pub fn update_suggestions(&mut self) {
         // Check for / command completion
         if self.input.starts_with('/') && !self.input.contains(' ') {
@@ -1050,6 +1114,7 @@ pub enum CommandResponse {
     Resume(Option<String>), // Optional session ID
     NewSession,
     ToggleSearch,
+    CopyLast,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {

@@ -34,6 +34,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "/resume",
         "Resume last session or list recent: /resume [id]",
     ),
+    ("/copy", "Copy last response to clipboard"),
     ("/diff", "Show git diff (unstaged changes)"),
     ("/new", "Start a new conversation (saves current session)"),
     (
@@ -67,6 +68,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  /undo       Revert last file changes\n");
             help.push_str("  /diff       Show git diff\n");
             help.push_str("  /save       Save conversation to file\n");
+            help.push_str("  /copy       Copy last response to clipboard\n");
             help.push_str("  /todo       Show task list\n");
             help.push_str("  /retry      Retry last message\n");
             help.push_str("  /resume     Resume previous session\n");
@@ -301,6 +303,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
             }
         }
         "/search" => CommandResponse::ToggleSearch,
+        "/copy" | "/cp" => CommandResponse::CopyLast,
         "/version" => CommandResponse::Message(format!(
             "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
             env!("CARGO_PKG_VERSION")

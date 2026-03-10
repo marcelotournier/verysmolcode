@@ -54,11 +54,17 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
-    let mode = if app.planning_mode { " [PLAN] " } else { "" };
+    let mut badges = String::new();
+    if app.planning_mode {
+        badges.push_str(" [PLAN]");
+    }
+    if app.search_grounding {
+        badges.push_str(" [WEB]");
+    }
     let title = if app.is_processing {
-        format!(" \u{1FAD0} VerySmolCode{}  [{}] ", mode, app.model_name)
+        format!(" \u{1FAD0} VerySmolCode{}  [{}] ", badges, app.model_name)
     } else {
-        format!(" \u{1FAD0} VerySmolCode{} ", mode)
+        format!(" \u{1FAD0} VerySmolCode{} ", badges)
     };
 
     let header = Block::default()
