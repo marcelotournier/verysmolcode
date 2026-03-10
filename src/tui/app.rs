@@ -1011,6 +1011,58 @@ mod tests {
         assert!(summary.contains("500"));
     }
 
+    #[test]
+    fn test_save_conversation_path_traversal_slash() {
+        let app = App::test_new();
+        let result = app.save_conversation(Some("../evil.md"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path separators"));
+    }
+
+    #[test]
+    fn test_save_conversation_path_traversal_backslash() {
+        let app = App::test_new();
+        let result = app.save_conversation(Some("..\\evil.md"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_save_conversation_path_traversal_dotdot() {
+        let app = App::test_new();
+        let result = app.save_conversation(Some("..test.md"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_save_conversation_writes_file() {
+        let mut app = App::test_new();
+        app.messages.push(DisplayMessage::User("hello".to_string()));
+        app.messages
+            .push(DisplayMessage::Assistant("hi there".to_string()));
+
+        let result = app.save_conversation(Some("vsc-test-save.md"));
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("# VerySmolCode Conversation"));
+        assert!(content.contains("hello"));
+        assert!(content.contains("hi there"));
+        // Clean up
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_save_conversation_default_filename() {
+        let app = App::test_new();
+        let result = app.save_conversation(None);
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.contains("vsc-conversation-"));
+        assert!(path.ends_with(".md"));
+        // Clean up
+        let _ = std::fs::remove_file(&path);
+    }
+
     // -- summarize_tool_result tests --
 
     #[test]

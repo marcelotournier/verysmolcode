@@ -1,4 +1,8 @@
+use std::sync::Mutex;
 use verysmolcode::tui::commands::{autocomplete, handle_command};
+
+// MCP tests share a config file on disk, so they must not run concurrently.
+static MCP_LOCK: Mutex<()> = Mutex::new(());
 
 // Helper to check if a command returns a message (not quit/clear/etc.)
 fn is_message(input: &str) -> bool {
@@ -408,9 +412,11 @@ fn test_config_set_safety_disabled() {
 }
 
 // -- MCP add/rm success tests --
+// These share a config file on disk, so MCP_LOCK serializes them.
 
 #[test]
 fn test_mcp_add_success() {
+    let _lock = MCP_LOCK.lock().unwrap();
     let name = format!("test_add_{}", std::process::id());
     let msg = get_message(&format!("/mcp-add {} echo hello world", name));
     assert!(msg.contains("added"));
@@ -419,6 +425,7 @@ fn test_mcp_add_success() {
 
 #[test]
 fn test_mcp_add_no_extra_args() {
+    let _lock = MCP_LOCK.lock().unwrap();
     let name = format!("test_noargs_{}", std::process::id());
     let msg = get_message(&format!("/mcp-add {} echo", name));
     assert!(msg.contains("added"));
@@ -427,6 +434,7 @@ fn test_mcp_add_no_extra_args() {
 
 #[test]
 fn test_mcp_rm_success() {
+    let _lock = MCP_LOCK.lock().unwrap();
     let name = format!("test_rm_{}", std::process::id());
     let _ = get_message(&format!("/mcp-add {} echo hi", name));
     let msg = get_message(&format!("/mcp-rm {}", name));
@@ -435,7 +443,7 @@ fn test_mcp_rm_success() {
 
 #[test]
 fn test_mcp_list_with_server() {
-    // Use a unique name to avoid race conditions with parallel tests
+    let _lock = MCP_LOCK.lock().unwrap();
     let name = format!("test_srv_list_{}", std::process::id());
     let _ = get_message(&format!("/mcp-add {} echo hi", name));
     let msg = get_message("/mcp");
