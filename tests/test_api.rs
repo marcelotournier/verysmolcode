@@ -1,3 +1,4 @@
+use verysmolcode::api::client::{build_request, extract_response};
 use verysmolcode::api::models::*;
 use verysmolcode::api::types::*;
 
@@ -196,4 +197,187 @@ fn test_function_call_response_deserialization() {
         }
         _ => panic!("Expected FunctionCall"),
     }
+}
+
+// -- build_request tests --
+
+#[test]
+fn test_build_request_with_thinking() {
+    let request = build_request(
+        "Be helpful",
+        vec![Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text("Hello")],
+        }],
+        None,
+        ModelId::Gemini25Flash, // Flash supports thinking
+        0.7,
+        1024,
+    );
+
+    let config = request.generation_config.unwrap();
+    assert!(config.thinking_config.is_some());
+    assert_eq!(config.thinking_config.unwrap().thinking_budget, 2048);
+}
+
+#[test]
+fn test_build_request_without_thinking() {
+    let request = build_request(
+        "Be helpful",
+        vec![],
+        None,
+        ModelId::Gemini25Pro, // Pro doesn't support thinking
+        0.5,
+        2048,
+    );
+
+    let config = request.generation_config.unwrap();
+    assert!(config.thinking_config.is_none());
+    assert_eq!(config.max_output_tokens, Some(2048));
+    assert_eq!(config.temperature, Some(0.5));
+}
+
+#[test]
+fn test_build_request_with_tools() {
+    let tools = vec![ToolDeclaration {
+        function_declarations: vec![FunctionDecl {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+        }],
+    }];
+
+    let request = build_request(
+        "sys",
+        vec![],
+        Some(tools),
+        ModelId::Gemini25Flash,
+        0.7,
+        1024,
+    );
+    assert!(request.tools.is_some());
+    assert_eq!(
+        request.tools.unwrap()[0].function_declarations[0].name,
+        "test_tool"
+    );
+}
+
+#[test]
+fn test_build_request_system_prompt() {
+    let request = build_request(
+        "Custom system prompt",
+        vec![],
+        None,
+        ModelId::Gemini25Pro,
+        0.7,
+        1024,
+    );
+    let sys = request.system_instruction.unwrap();
+    match &sys.parts[0] {
+        Part::Text { text } => assert_eq!(text, "Custom system prompt"),
+        _ => panic!("Expected text part"),
+    }
+}
+
+// -- extract_response tests --
+
+#[test]
+fn test_extract_response_text() {
+    let response = GenerateResponse {
+        candidates: vec![Candidate {
+            content: Some(Content {
+                role: Some("model".to_string()),
+                parts: vec![Part::text("Hello world")],
+            }),
+            finish_reason: Some("STOP".to_string()),
+        }],
+        usage_metadata: None,
+        error: None,
+    };
+
+    let (texts, calls) = extract_response(&response);
+    assert_eq!(texts.len(), 1);
+    assert_eq!(texts[0], "Hello world");
+    assert!(calls.is_empty());
+}
+
+#[test]
+fn test_extract_response_function_call() {
+    let response = GenerateResponse {
+        candidates: vec![Candidate {
+            content: Some(Content {
+                role: Some("model".to_string()),
+                parts: vec![Part::FunctionCall {
+                    function_call: FunctionCall {
+                        name: "write_file".to_string(),
+                        args: serde_json::json!({"path": "/tmp/test", "content": "hello"}),
+                    },
+                }],
+            }),
+            finish_reason: None,
+        }],
+        usage_metadata: None,
+        error: None,
+    };
+
+    let (texts, calls) = extract_response(&response);
+    assert!(texts.is_empty());
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "write_file");
+}
+
+#[test]
+fn test_extract_response_mixed() {
+    let response = GenerateResponse {
+        candidates: vec![Candidate {
+            content: Some(Content {
+                role: Some("model".to_string()),
+                parts: vec![
+                    Part::text("Let me create that file"),
+                    Part::FunctionCall {
+                        function_call: FunctionCall {
+                            name: "write_file".to_string(),
+                            args: serde_json::json!({}),
+                        },
+                    },
+                ],
+            }),
+            finish_reason: None,
+        }],
+        usage_metadata: None,
+        error: None,
+    };
+
+    let (texts, calls) = extract_response(&response);
+    assert_eq!(texts.len(), 1);
+    assert_eq!(calls.len(), 1);
+}
+
+#[test]
+fn test_extract_response_empty_candidates() {
+    let response = GenerateResponse {
+        candidates: vec![],
+        usage_metadata: None,
+        error: None,
+    };
+
+    let (texts, calls) = extract_response(&response);
+    assert!(texts.is_empty());
+    assert!(calls.is_empty());
+}
+
+#[test]
+fn test_extract_response_no_content() {
+    let response = GenerateResponse {
+        candidates: vec![Candidate {
+            content: None,
+            finish_reason: Some("SAFETY".to_string()),
+        }],
+        usage_metadata: None,
+        error: None,
+    };
+
+    let (texts, calls) = extract_response(&response);
+    assert!(texts.is_empty());
+    assert!(calls.is_empty());
 }
