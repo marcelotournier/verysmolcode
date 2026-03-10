@@ -266,3 +266,65 @@ fn test_case_insensitive_commands() {
     ));
     assert!(is_message("/HELP"));
 }
+
+#[test]
+fn test_config_set_max_tokens() {
+    let msg = get_message("/config set max_tokens 512");
+    assert!(msg.contains("Max tokens"));
+}
+
+#[test]
+fn test_config_set_max_tokens_invalid() {
+    let msg = get_message("/config set max_tokens abc");
+    assert!(msg.contains("Error"));
+}
+
+#[test]
+fn test_config_set_compact_threshold() {
+    let msg = get_message("/config set compact_threshold 8000");
+    assert!(msg.contains("Auto-compact threshold"));
+}
+
+#[test]
+fn test_config_set_safety_on() {
+    let msg = get_message("/config set safety on");
+    assert!(msg.contains("Safety checks enabled"));
+}
+
+#[test]
+fn test_config_set_safety_off() {
+    let msg = get_message("/config set safety off");
+    assert!(msg.contains("Safety checks disabled"));
+    // Re-enable to not affect other tests
+    let _ = get_message("/config set safety on");
+}
+
+#[test]
+fn test_config_set_safety_invalid() {
+    let msg = get_message("/config set safety maybe");
+    assert!(msg.contains("Error"));
+}
+
+#[test]
+fn test_retry_command() {
+    assert!(matches!(
+        handle_command("/retry"),
+        verysmolcode::tui::app::CommandResponse::Retry
+    ));
+    assert!(matches!(
+        handle_command("/r"),
+        verysmolcode::tui::app::CommandResponse::Retry
+    ));
+}
+
+#[test]
+fn test_todo_command() {
+    assert!(matches!(
+        handle_command("/todo"),
+        verysmolcode::tui::app::CommandResponse::ShowTodo
+    ));
+    assert!(matches!(
+        handle_command("/t"),
+        verysmolcode::tui::app::CommandResponse::ShowTodo
+    ));
+}
