@@ -18,7 +18,13 @@ pub fn web_fetch(args: &Value) -> Value {
     }
 
     match ureq::get(url)
-        .set("User-Agent", "VerySmolCode/0.1 (coding-assistant)")
+        .set(
+            "User-Agent",
+            &format!(
+                "VerySmolCode/{} (coding-assistant)",
+                env!("CARGO_PKG_VERSION")
+            ),
+        )
         .call()
     {
         Ok(resp) => {
@@ -44,10 +50,14 @@ pub fn web_fetch(args: &Value) -> Value {
                         body.clone()
                     };
 
-                    // Truncate to save tokens
+                    // Truncate to save tokens (at a safe char boundary)
                     let max_chars = 20_000;
                     let (content, truncated) = if clean.len() > max_chars {
-                        (clean[..max_chars].to_string(), true)
+                        let mut end = max_chars;
+                        while end > 0 && !clean.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        (clean[..end].to_string(), true)
                     } else {
                         (clean, false)
                     };

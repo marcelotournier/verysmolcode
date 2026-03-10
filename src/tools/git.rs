@@ -223,10 +223,14 @@ pub fn run_shell(args: &Value) -> Value {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    // Truncate long output
+                    // Truncate long output at a safe char boundary
                     let max_len = 10_000;
                     let stdout_str = if stdout.len() > max_len {
-                        format!("{}...(truncated)", &stdout[..max_len])
+                        let mut end = max_len;
+                        while end > 0 && !stdout.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        format!("{}...(truncated)", &stdout[..end])
                     } else {
                         stdout.to_string()
                     };

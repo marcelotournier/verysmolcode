@@ -13,10 +13,14 @@ pub fn read_file(args: &Value) -> Value {
     let path = resolve_path(path);
     match fs::read_to_string(&path) {
         Ok(content) => {
-            // Truncate very large files to save tokens
+            // Truncate very large files to save tokens (at a safe char boundary)
             let max_chars = 50_000;
             if content.len() > max_chars {
-                let truncated = &content[..max_chars];
+                let mut end = max_chars;
+                while end > 0 && !content.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let truncated = &content[..end];
                 json!({
                     "content": truncated,
                     "truncated": true,
