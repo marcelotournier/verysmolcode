@@ -8,7 +8,7 @@ mod tools;
 mod tui;
 
 use std::env;
-use std::io::{self, Read};
+use std::io::{self, IsTerminal, Read};
 
 fn main() {
     // Check for API key early
@@ -68,8 +68,55 @@ fn main() {
     }
 }
 
+// ANSI color helpers for prompt mode (only when stderr is a terminal)
+struct PromptColors {
+    use_color: bool,
+}
+
+impl PromptColors {
+    fn new() -> Self {
+        Self {
+            use_color: io::stderr().is_terminal(),
+        }
+    }
+
+    fn dim(&self, s: &str) -> String {
+        if self.use_color {
+            format!("\x1b[2m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    }
+
+    fn green(&self, s: &str) -> String {
+        if self.use_color {
+            format!("\x1b[32m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    }
+
+    fn cyan(&self, s: &str) -> String {
+        if self.use_color {
+            format!("\x1b[36m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    }
+
+    fn yellow(&self, s: &str) -> String {
+        if self.use_color {
+            format!("\x1b[33m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    }
+}
+
 fn run_prompt_mode(prompt: &str) {
     use agent::AgentLoop;
+
+    let colors = PromptColors::new();
 
     let mut agent = match AgentLoop::new() {
         Ok(a) => a,
@@ -110,18 +157,21 @@ fn run_prompt_mode(prompt: &str) {
                 } else {
                     args.to_string()
                 };
-                eprintln!("[tool] {}({})", name, args_brief);
+                eprintln!(
+                    "{}",
+                    colors.cyan(&format!("\u{1F529} {}({})", name, args_brief))
+                );
             }
             AgentEvent::ToolResult { name, .. } => {
-                eprintln!("[done] {}", name);
+                eprintln!("{}", colors.green(&format!("\u{2705} {}", name)));
             }
             AgentEvent::Status(s) => {
-                if !s.starts_with("RATE:") {
-                    eprintln!("[status] {}", s);
+                if !s.starts_with("RATE:") && !s.starts_with("WARN:") {
+                    eprintln!("{}", colors.dim(&format!("\u{1F4AC} {}", s)));
                 }
             }
             AgentEvent::ModelSwitch(m) => {
-                eprintln!("[model] {}", m);
+                eprintln!("{}", colors.yellow(&format!("\u{2699}\u{FE0F}  {}", m)));
             }
             _ => {}
         }
