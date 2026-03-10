@@ -68,12 +68,17 @@
 - [x] ARM wheel cross-compilation via manylinux_2_28 + Python 3.13 pin
 - [x] RPi3 pip install verified: downloads binary wheel (1.3MB), no compilation needed
 
+## Completed (v0.7.8)
+- [x] Configuration editing via /config set (temperature, max_tokens, compact_threshold, safety)
+- [x] User-selectable model tier: /fast (/f) and /smart (/s) per request
+- [x] Rate limit warnings when Pro budget <= 5 or models exhausted
+- [x] 101 unit tests across 5 test files
+- [x] GitHub Releases with release notes (v0.7.7, v0.7.8)
+
 ## Planned
-- [ ] Configuration editing via slash commands (/config set temperature 0.5)
-- [ ] User-selectable model tier (/fast, /smart) per request
-- [ ] Warn user when approaching daily limits (e.g. <5 Pro requests remaining)
-- [ ] Increase test coverage toward 100%
-- [ ] GitHub Release notes with gh release create
+- [ ] macOS and Windows wheel builds in CI
+- [ ] /undo command to revert last file changes
+- [ ] Conversation export/save (/save)
 
 # Lessons Learned
 
