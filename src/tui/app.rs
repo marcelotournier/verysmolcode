@@ -40,6 +40,10 @@ pub struct App {
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
     pub planning_mode: bool,
+
+    // Command autocomplete popup
+    pub command_suggestions: Vec<(String, String)>,
+    pub suggestion_index: Option<usize>,
 }
 
 impl App {
@@ -64,12 +68,22 @@ impl App {
             input_history: Vec::new(),
             history_index: None,
             planning_mode: false,
+            command_suggestions: Vec::new(),
+            suggestion_index: None,
         };
 
-        // Welcome message
+        // Welcome message with cute ASCII art
         app.messages.push(DisplayMessage::Assistant(
-            "Welcome to VerySmolCode! I'm your lightweight coding assistant powered by Gemini.\n\
-             Type /help for available commands. Start typing to ask me anything!"
+            "\n\
+             \x20    ____   ____  _____  _____ \n\
+             \x20   |    | |    ||  ___||  ___|\n\
+             \x20   |    | | __ ||____ ||   __|\n\
+             \x20    \\__/  |____||_____||_____|\n\
+             \n\
+             \x20   VerySmolCode - Your tiny coding buddy!\n\
+             \n\
+             \x20   Type a message to get started, or /help for commands.\n\
+             \x20   Tip: Type / to see all available commands!"
                 .to_string(),
         ));
 
@@ -446,6 +460,42 @@ impl App {
 }
 
 impl App {
+    pub fn update_suggestions(&mut self) {
+        if self.input.starts_with('/') && !self.input.contains(' ') {
+            let input = self.input.to_lowercase();
+            self.command_suggestions = crate::tui::commands::COMMANDS
+                .iter()
+                .filter(|(cmd, _)| cmd.starts_with(&input))
+                .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
+                .collect();
+            // Reset selection if out of bounds
+            if let Some(idx) = self.suggestion_index {
+                if idx >= self.command_suggestions.len() {
+                    self.suggestion_index = None;
+                }
+            }
+        } else {
+            self.command_suggestions.clear();
+            self.suggestion_index = None;
+        }
+    }
+
+    pub fn select_suggestion(&mut self) -> bool {
+        if self.command_suggestions.is_empty() {
+            return false;
+        }
+        let idx = self.suggestion_index.unwrap_or(0);
+        if idx < self.command_suggestions.len() {
+            self.input = self.command_suggestions[idx].0.clone();
+            self.cursor_pos = self.input.len();
+            self.command_suggestions.clear();
+            self.suggestion_index = None;
+            true
+        } else {
+            false
+        }
+    }
+
     fn save_conversation(&self, filename: Option<&str>) -> Result<String, String> {
         let path = match filename {
             Some(f) => f.to_string(),
@@ -721,5 +771,48 @@ mod tests {
         let _undo = CommandResponse::Undo;
         let _save = CommandResponse::Save(None);
         let _save_file = CommandResponse::Save(Some("test.md".to_string()));
+    }
+
+    #[test]
+    fn test_suggestion_updates_on_slash() {
+        // Create a minimal app-like state to test update_suggestions
+        // We can't call App::new() (needs GEMINI_API_KEY), so test the logic directly
+        let suggestions: Vec<(String, String)> = crate::tui::commands::COMMANDS
+            .iter()
+            .filter(|(cmd, _)| cmd.starts_with("/h"))
+            .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
+            .collect();
+        assert_eq!(suggestions.len(), 1); // /help
+        assert_eq!(suggestions[0].0, "/help");
+    }
+
+    #[test]
+    fn test_suggestion_all_commands_on_slash() {
+        let suggestions: Vec<(String, String)> = crate::tui::commands::COMMANDS
+            .iter()
+            .filter(|(cmd, _)| cmd.starts_with("/"))
+            .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
+            .collect();
+        assert!(suggestions.len() >= 15); // All commands
+    }
+
+    #[test]
+    fn test_suggestion_filter_prefix() {
+        let suggestions: Vec<(String, String)> = crate::tui::commands::COMMANDS
+            .iter()
+            .filter(|(cmd, _)| cmd.starts_with("/mc"))
+            .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
+            .collect();
+        assert_eq!(suggestions.len(), 3); // /mcp, /mcp-add, /mcp-rm
+    }
+
+    #[test]
+    fn test_suggestion_no_match() {
+        let suggestions: Vec<(String, String)> = crate::tui::commands::COMMANDS
+            .iter()
+            .filter(|(cmd, _)| cmd.starts_with("/zzz"))
+            .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
+            .collect();
+        assert!(suggestions.is_empty());
     }
 }

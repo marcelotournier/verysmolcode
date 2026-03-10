@@ -38,7 +38,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 
     match key.code {
         KeyCode::Enter => {
-            app.submit_input();
+            // If suggestion popup is open and one is selected, fill it in first
+            if !app.command_suggestions.is_empty() && app.suggestion_index.is_some() {
+                app.select_suggestion();
+            } else {
+                app.submit_input();
+            }
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -48,9 +53,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     'u' => {
                         app.input.drain(..app.cursor_pos);
                         app.cursor_pos = 0;
+                        app.update_suggestions();
                     }
                     'k' => {
                         app.input.truncate(app.cursor_pos);
+                        app.update_suggestions();
                     }
                     'w' => {
                         // Delete word backward (char-boundary aware)
@@ -79,6 +86,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             } else {
                 app.input.insert(app.cursor_pos, c);
                 app.cursor_pos += c.len_utf8();
+                app.update_suggestions();
             }
         }
         KeyCode::Backspace => {
@@ -86,12 +94,14 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 let prev = prev_char_boundary(&app.input, app.cursor_pos);
                 app.input.drain(prev..app.cursor_pos);
                 app.cursor_pos = prev;
+                app.update_suggestions();
             }
         }
         KeyCode::Delete => {
             if app.cursor_pos < app.input.len() {
                 let next = next_char_boundary(&app.input, app.cursor_pos);
                 app.input.drain(app.cursor_pos..next);
+                app.update_suggestions();
             }
         }
         KeyCode::Left => {
@@ -111,10 +121,30 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             app.cursor_pos = app.input.len();
         }
         KeyCode::Up => {
-            app.history_up();
+            if !app.command_suggestions.is_empty() {
+                // Navigate suggestions up
+                let len = app.command_suggestions.len();
+                app.suggestion_index = Some(match app.suggestion_index {
+                    Some(i) if i > 0 => i - 1,
+                    Some(_) => len - 1,
+                    None => len - 1,
+                });
+            } else {
+                app.history_up();
+            }
         }
         KeyCode::Down => {
-            app.history_down();
+            if !app.command_suggestions.is_empty() {
+                // Navigate suggestions down
+                let len = app.command_suggestions.len();
+                app.suggestion_index = Some(match app.suggestion_index {
+                    Some(i) if i + 1 < len => i + 1,
+                    Some(_) => 0,
+                    None => 0,
+                });
+            } else {
+                app.history_down();
+            }
         }
         KeyCode::PageUp => {
             app.scroll_up();
@@ -123,14 +153,21 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             app.scroll_down();
         }
         KeyCode::Tab => {
-            // Auto-complete slash commands
-            if app.input.starts_with('/') {
+            // Select from suggestion popup, or autocomplete
+            if !app.command_suggestions.is_empty() {
+                app.select_suggestion();
+            } else if app.input.starts_with('/') {
                 let completions = crate::tui::commands::autocomplete(&app.input);
                 if completions.len() == 1 {
                     app.input = completions[0].clone();
                     app.cursor_pos = app.input.len();
                 }
             }
+        }
+        KeyCode::Esc => {
+            // Dismiss suggestion popup
+            app.command_suggestions.clear();
+            app.suggestion_index = None;
         }
         _ => {}
     }

@@ -1,6 +1,6 @@
 use crate::tui::app::CommandResponse;
 
-const COMMANDS: &[(&str, &str)] = &[
+pub const COMMANDS: &[(&str, &str)] = &[
     ("/help", "Show available commands"),
     ("/clear", "Clear conversation and screen"),
     ("/quit", "Exit VerySmolCode"),

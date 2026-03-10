@@ -4,6 +4,8 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 
 ## Features
 
+- **CLI Prompt Mode**: `vsc -p "prompt"` for single-shot usage (like `claude -p`), supports piped input
+- **Command Autocomplete**: Type `/` to see all available commands with descriptions, navigate with arrow keys
 - **Smart Model Routing**: 6 models across Gemini 3.x and 2.5 — automatically selects the best available model based on task complexity, with graceful fallback when rate-limited or overloaded
 - **Planning Mode**: `/plan` for read-only analysis using Pro models before making changes
 - **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading (18 tools)
@@ -50,8 +52,17 @@ maturin develop --features python
 # Set your Gemini API key (get one free at https://aistudio.google.com/apikey)
 export GEMINI_API_KEY=your_key_here
 
-# Run VerySmolCode
+# Run interactive TUI
 vsc
+
+# Run a single prompt (like claude -p)
+vsc -p "explain this codebase"
+
+# Pipe input as prompt
+cat error.log | vsc -p "what's wrong here?"
+
+# Show version
+vsc -v
 ```
 
 ## Commands
@@ -157,7 +168,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (222 tests)
+# Unit tests (226 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)

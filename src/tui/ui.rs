@@ -1,6 +1,6 @@
 use crate::tui::app::{App, DisplayMessage};
 use ratatui::prelude::*;
-use ratatui::widgets::*;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 // Color scheme - comfortable blue tones for tmux
 const BG_COLOR: Color = Color::Rgb(15, 17, 26);
@@ -14,6 +14,11 @@ const STATUS_COLOR: Color = Color::Rgb(180, 160, 100);
 const ERROR_COLOR: Color = Color::Rgb(255, 120, 120);
 const BORDER_COLOR: Color = Color::Rgb(60, 80, 120);
 const ACCENT_COLOR: Color = Color::Rgb(80, 140, 255);
+
+const SUGGESTION_BG: Color = Color::Rgb(30, 40, 65);
+const SUGGESTION_HIGHLIGHT: Color = Color::Rgb(50, 70, 110);
+const SUGGESTION_CMD_COLOR: Color = Color::Rgb(140, 190, 255);
+const SUGGESTION_DESC_COLOR: Color = Color::Rgb(130, 140, 160);
 
 pub fn draw(f: &mut Frame, app: &App) {
     let size = f.area();
@@ -33,14 +38,19 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_messages(f, chunks[1], app);
     draw_input(f, chunks[2], app);
     draw_status_bar(f, chunks[3], app);
+
+    // Draw command suggestion popup (overlay, drawn last)
+    if !app.command_suggestions.is_empty() && !app.is_processing {
+        draw_suggestions(f, chunks[2], app);
+    }
 }
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     let mode = if app.planning_mode { " [PLAN] " } else { "" };
     let title = if app.is_processing {
-        format!(" VerySmolCode{}  [{}] ", mode, app.model_name)
+        format!(" \u{1FAD0} VerySmolCode{}  [{}] ", mode, app.model_name)
     } else {
-        format!(" VerySmolCode{} ", mode)
+        format!(" \u{1FAD0} VerySmolCode{} ", mode)
     };
 
     let header = Block::default()
@@ -51,16 +61,22 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         .style(Style::default().bg(HEADER_BG));
 
     let spinner = if app.is_processing {
-        let frames = [".", "..", "...", "....", "...."];
+        let frames = [
+            "\u{2699}\u{FE0F} Working.",
+            "\u{2699}\u{FE0F} Working..",
+            "\u{2699}\u{FE0F} Working...",
+            "\u{1F527} Working....",
+            "\u{1F527} Working.....",
+        ];
         let idx = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis()
             / 300) as usize
             % frames.len();
-        format!("Working{}", frames[idx])
+        frames[idx].to_string()
     } else {
-        "Ready".to_string()
+        "\u{2728} Ready".to_string()
     };
 
     let inner = header.inner(area);
@@ -82,7 +98,7 @@ fn draw_messages(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(block, area);
 
     if app.messages.is_empty() {
-        let welcome = Paragraph::new("Type a message or /help to get started")
+        let welcome = Paragraph::new("\u{1F44B} Hey there! Type a message or /help to get started")
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center);
         f.render_widget(welcome, inner);
@@ -177,7 +193,7 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(block, area);
 
     let display_text = if app.input.is_empty() && !app.is_processing {
-        "Type your message here...".to_string()
+        "Ask me anything or type / for commands...".to_string()
     } else {
         app.input.clone()
     };
@@ -206,9 +222,9 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let right = if !app.status_line.is_empty() {
-        app.status_line.clone()
+        format!("\u{1F4CA} {}", app.status_line)
     } else {
-        "Ctrl+C: quit | /help".to_string()
+        "\u{1F4A1} Ctrl+C: quit | /help".to_string()
     };
 
     let width = area.width as usize;
@@ -222,6 +238,68 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     );
 
     f.render_widget(bar, area);
+}
+
+fn draw_suggestions(f: &mut Frame, input_area: Rect, app: &App) {
+    let count = app.command_suggestions.len().min(10); // Max 10 visible
+    if count == 0 {
+        return;
+    }
+
+    let height = count as u16 + 2; // +2 for borders
+    let width = 50u16.min(input_area.width);
+
+    // Position popup above the input box
+    let x = input_area.x + 1;
+    let y = input_area.y.saturating_sub(height);
+
+    let popup_area = Rect::new(x, y, width, height);
+
+    // Clear background
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ACCENT_COLOR))
+        .style(Style::default().bg(SUGGESTION_BG))
+        .title(" Commands ")
+        .title_alignment(Alignment::Left);
+
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    // Render each suggestion
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, (cmd, desc)) in app.command_suggestions.iter().take(10).enumerate() {
+        let is_selected = app.suggestion_index == Some(i);
+        let bg = if is_selected {
+            SUGGESTION_HIGHLIGHT
+        } else {
+            SUGGESTION_BG
+        };
+
+        let cmd_display = format!("{:<14}", cmd);
+        let desc_max = inner.width as usize - 15;
+        let desc_display = if desc.len() > desc_max {
+            format!("{}...", &desc[..desc_max.saturating_sub(3)])
+        } else {
+            desc.to_string()
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                cmd_display,
+                Style::default().fg(SUGGESTION_CMD_COLOR).bg(bg).bold(),
+            ),
+            Span::styled(
+                desc_display,
+                Style::default().fg(SUGGESTION_DESC_COLOR).bg(bg),
+            ),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    f.render_widget(paragraph, inner);
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
