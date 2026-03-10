@@ -3,6 +3,7 @@
 mod agent;
 mod api;
 mod config;
+mod mcp;
 mod tools;
 mod tui;
 

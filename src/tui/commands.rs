@@ -9,13 +9,19 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/config", "Show current configuration"),
     ("/compact", "Manually compact conversation to save tokens"),
     ("/model", "Show available models and current selection"),
+    ("/mcp", "List configured MCP servers"),
+    (
+        "/mcp-add",
+        "Add an MCP server: /mcp-add <name> <command> [args...]",
+    ),
+    ("/mcp-rm", "Remove an MCP server: /mcp-rm <name>"),
     ("/version", "Show version information"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
     let cmd = parts[0].to_lowercase();
-    let _args = parts.get(1).unwrap_or(&"");
+    let args = parts.get(1).unwrap_or(&"");
 
     match cmd.as_str() {
         "/help" | "/h" => {
@@ -67,6 +73,83 @@ pub fn handle_command(input: &str) -> CommandResponse {
                        Model is automatically selected based on task complexity.\n\
                        Falls back to simpler models when rate limits are hit.";
             CommandResponse::Message(msg.to_string())
+        }
+        "/mcp" => {
+            let config = crate::mcp::config::McpConfig::load();
+            if config.servers.is_empty() {
+                CommandResponse::Message(
+                    "No MCP servers configured.\n\
+                     Use /mcp-add <name> <command> [args...] to add one.\n\n\
+                     Examples:\n\
+                     /mcp-add context7 npx -y @anthropic-ai/context7-mcp\n\
+                     /mcp-add playwright npx -y @anthropic-ai/playwright-mcp"
+                        .to_string(),
+                )
+            } else {
+                let mut msg = String::from("Configured MCP servers:\n\n");
+                for server in &config.servers {
+                    msg.push_str(&format!(
+                        "  {} - {} {}\n",
+                        server.name,
+                        server.command,
+                        server.args.join(" ")
+                    ));
+                }
+                CommandResponse::Message(msg)
+            }
+        }
+        "/mcp-add" => {
+            let parts: Vec<&str> = args.splitn(3, ' ').collect();
+            if parts.len() < 2 {
+                CommandResponse::Message(
+                    "Usage: /mcp-add <name> <command> [args...]\n\
+                     Example: /mcp-add context7 npx -y @anthropic-ai/context7-mcp"
+                        .to_string(),
+                )
+            } else {
+                let name = parts[0].to_string();
+                let command = parts[1].to_string();
+                let args: Vec<String> = if parts.len() > 2 {
+                    parts[2].split_whitespace().map(|s| s.to_string()).collect()
+                } else {
+                    Vec::new()
+                };
+
+                let server_config = crate::mcp::types::McpServerConfig {
+                    name: name.clone(),
+                    command,
+                    args,
+                    env: std::collections::HashMap::new(),
+                };
+
+                let mut mcp_config = crate::mcp::config::McpConfig::load();
+                mcp_config.add_server(server_config);
+                match mcp_config.save() {
+                    Ok(()) => CommandResponse::Message(format!(
+                        "MCP server '{}' added. It will be available on next restart.",
+                        name
+                    )),
+                    Err(e) => CommandResponse::Message(format!("Failed to save config: {}", e)),
+                }
+            }
+        }
+        "/mcp-rm" => {
+            let name = args.trim();
+            if name.is_empty() {
+                CommandResponse::Message("Usage: /mcp-rm <name>".to_string())
+            } else {
+                let mut mcp_config = crate::mcp::config::McpConfig::load();
+                if mcp_config.remove_server(name) {
+                    match mcp_config.save() {
+                        Ok(()) => {
+                            CommandResponse::Message(format!("MCP server '{}' removed.", name))
+                        }
+                        Err(e) => CommandResponse::Message(format!("Failed to save config: {}", e)),
+                    }
+                } else {
+                    CommandResponse::Message(format!("MCP server '{}' not found.", name))
+                }
+            }
         }
         "/version" => CommandResponse::Message(format!(
             "VerySmolCode v{}\nA lightweight coding assistant for constrained devices",
