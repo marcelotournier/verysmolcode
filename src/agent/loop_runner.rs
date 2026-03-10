@@ -288,7 +288,27 @@ impl AgentLoop {
                     PLANNING_SYSTEM_PROMPT, &self.config.system_prompt
                 )
             } else {
-                self.config.system_prompt.clone()
+                let mut prompt = self.config.system_prompt.clone();
+                // Add MCP tool hints to system prompt so the model knows what's available
+                if !self.mcp_clients.is_empty() {
+                    prompt.push_str("\n\n## Available MCP servers\n");
+                    for client in &self.mcp_clients {
+                        let tool_names: Vec<String> =
+                            client.tools.iter().map(|t| t.name.clone()).collect();
+                        prompt.push_str(&format!(
+                            "- {} (tools: {})\n",
+                            client.name(),
+                            tool_names.join(", ")
+                        ));
+                    }
+                    prompt.push_str(
+                        "\nWhen writing code that uses external libraries, ALWAYS use MCP tools \
+                         (like context7's resolve-library-id and get-library-docs) to look up \
+                         correct API usage BEFORE writing code. This prevents errors from \
+                         outdated or incorrect API assumptions.",
+                    );
+                }
+                prompt
             };
 
             // Make API call with automatic fallback chain on rate limit/overload

@@ -33,16 +33,36 @@ pub fn handle_command(input: &str) -> CommandResponse {
 
     match cmd.as_str() {
         "/help" | "/h" => {
-            let mut help = String::from("Available commands:\n\n");
-            for (cmd, desc) in COMMANDS {
-                help.push_str(&format!("  {:12} {}\n", cmd, desc));
-            }
-            help.push_str("\nKeybindings:\n");
+            let mut help = String::from("\u{1F4D6} Available Commands\n\n");
+            help.push_str("\u{2728} Basics\n");
+            help.push_str("  /help       Show this help\n");
+            help.push_str("  /clear      Clear conversation\n");
+            help.push_str("  /quit       Exit VerySmolCode\n");
+            help.push_str("\n\u{1F3AF} Model Control\n");
+            help.push_str("  /fast       Use Flash (saves Pro budget)\n");
+            help.push_str("  /smart      Use Pro (best quality)\n");
+            help.push_str("  /plan       Toggle planning mode\n");
+            help.push_str("  /model      Show available models\n");
+            help.push_str("\n\u{1F4CA} Status & Tokens\n");
+            help.push_str("  /tokens     Token usage dashboard\n");
+            help.push_str("  /status     Rate limits & usage\n");
+            help.push_str("  /compact    Compact conversation\n");
+            help.push_str("\n\u{1F527} Tools\n");
+            help.push_str("  /undo       Revert last file changes\n");
+            help.push_str("  /save       Save conversation to file\n");
+            help.push_str("  /config     Show/edit configuration\n");
+            help.push_str("\n\u{1F50C} MCP Servers\n");
+            help.push_str("  /mcp        List MCP servers\n");
+            help.push_str("  /mcp-add    Add MCP server\n");
+            help.push_str("  /mcp-rm     Remove MCP server\n");
+            help.push_str("\n\u{2328}\u{FE0F}  Keybindings\n");
             help.push_str("  Ctrl+C     Cancel/Quit\n");
             help.push_str("  Ctrl+L     Clear screen\n");
-            help.push_str("  Up/Down    Input history\n");
+            help.push_str("  Up/Down    History / Navigate commands\n");
             help.push_str("  PgUp/PgDn  Scroll output\n");
-            help.push_str("  Tab        Auto-complete commands\n");
+            help.push_str("  Tab        Select command from popup\n");
+            help.push_str("  Esc        Dismiss command popup\n");
+            help.push_str("\n\u{1F4A1} Tip: Type / to see command suggestions!");
             CommandResponse::Message(help)
         }
         "/quit" | "/q" | "/exit" => CommandResponse::Quit,

@@ -18,7 +18,7 @@ fn get_message(input: &str) -> String {
 #[test]
 fn test_help_command() {
     let msg = get_message("/help");
-    assert!(msg.contains("Available commands"));
+    assert!(msg.contains("Available Commands"));
     assert!(msg.contains("/quit"));
     assert!(msg.contains("/clear"));
     assert!(msg.contains("Ctrl+C"));
@@ -27,7 +27,7 @@ fn test_help_command() {
 #[test]
 fn test_help_alias() {
     let msg = get_message("/h");
-    assert!(msg.contains("Available commands"));
+    assert!(msg.contains("Available Commands"));
 }
 
 #[test]
