@@ -85,6 +85,39 @@ fn test_rate_limiter_remaining() {
 }
 
 #[test]
+fn test_rate_limiter_wait_duration() {
+    let mut limiter = RateLimiter::new(ModelId::Gemini25Pro);
+
+    // Should have zero wait when under RPM limit
+    assert_eq!(limiter.wait_duration(), Some(std::time::Duration::ZERO));
+
+    // Exhaust RPM
+    for _ in 0..5 {
+        limiter.record_request();
+    }
+
+    // Should return Some with a positive wait (up to 60s)
+    let wait = limiter.wait_duration();
+    assert!(wait.is_some());
+    assert!(wait.unwrap().as_secs() > 0);
+    assert!(wait.unwrap().as_secs() <= 60);
+}
+
+#[test]
+fn test_rate_limiter_daily_exhausted() {
+    let mut limiter = RateLimiter::new(ModelId::Gemini25Pro);
+
+    // Exhaust daily limit (25 for Pro)
+    for _ in 0..25 {
+        limiter.record_request();
+    }
+
+    // Should return None (daily limit, cannot wait)
+    assert!(limiter.wait_duration().is_none());
+    assert_eq!(limiter.remaining_today(), 0);
+}
+
+#[test]
 fn test_model_router_picks_correct_model() {
     let mut router = ModelRouter::new();
 

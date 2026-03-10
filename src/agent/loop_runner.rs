@@ -257,6 +257,7 @@ impl AgentLoop {
             on_event(AgentEvent::Status("Thinking...".to_string()));
             let response = {
                 let mut current_model = model;
+                let mut retried = false;
                 loop {
                     let req = build_request(
                         &system_prompt,
@@ -269,6 +270,23 @@ impl AgentLoop {
                     match self.client.generate(current_model, &req) {
                         Ok(resp) => break resp,
                         Err(e) if is_rate_limit_error(&e) => {
+                            // First try: wait for the same model if RPM-limited (not daily)
+                            if !retried {
+                                if let Some(wait) = self.client.router.wait_for_model(current_model)
+                                {
+                                    if wait.as_secs() <= 15 && wait.as_secs() > 0 {
+                                        on_event(AgentEvent::Status(format!(
+                                            "Rate limited, waiting {}s for {}...",
+                                            wait.as_secs(),
+                                            current_model.display_name()
+                                        )));
+                                        std::thread::sleep(wait);
+                                        retried = true;
+                                        continue;
+                                    }
+                                }
+                            }
+                            // Fall back to a weaker model
                             if let Some(fb) = self.client.router.fallback_for(current_model) {
                                 on_event(AgentEvent::Status(format!(
                                     "{} unavailable, trying {}...",
@@ -277,6 +295,7 @@ impl AgentLoop {
                                 )));
                                 on_event(AgentEvent::ModelSwitch(fb.display_name().to_string()));
                                 current_model = fb;
+                                retried = false;
                             } else {
                                 return Err(e);
                             }
