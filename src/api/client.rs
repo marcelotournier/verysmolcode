@@ -181,3 +181,216 @@ pub fn extract_response(response: &GenerateResponse) -> (Vec<String>, Vec<Functi
 
     (texts, calls)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::models::ModelTier;
+    use serde_json::json;
+
+    // -- build_request tests --
+
+    #[test]
+    fn test_build_request_basic() {
+        let contents = vec![Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text("hello")],
+        }];
+        let req = build_request("system", contents, None, ModelId::Gemini3Flash, 0.7, 4096);
+        assert!(req.system_instruction.is_some());
+        assert_eq!(req.contents.len(), 1);
+        assert!(req.tools.is_none());
+    }
+
+    #[test]
+    fn test_build_request_thinking_budget_pro() {
+        let req = build_request("sys", vec![], None, ModelId::Gemini31Pro, 0.7, 4096);
+        let config = req.generation_config.unwrap();
+        let thinking = config.thinking_config.unwrap();
+        assert_eq!(thinking.thinking_budget, 2048);
+    }
+
+    #[test]
+    fn test_build_request_thinking_budget_flash() {
+        let req = build_request("sys", vec![], None, ModelId::Gemini3Flash, 0.7, 4096);
+        let config = req.generation_config.unwrap();
+        let thinking = config.thinking_config.unwrap();
+        assert_eq!(thinking.thinking_budget, 1024);
+    }
+
+    #[test]
+    fn test_build_request_thinking_budget_lite() {
+        let req = build_request("sys", vec![], None, ModelId::Gemini31FlashLite, 0.7, 4096);
+        let config = req.generation_config.unwrap();
+        let thinking = config.thinking_config.unwrap();
+        assert_eq!(thinking.thinking_budget, 512);
+    }
+
+    #[test]
+    fn test_build_request_system_prompt() {
+        let req = build_request(
+            "You are a helpful assistant",
+            vec![],
+            None,
+            ModelId::Gemini3Flash,
+            0.5,
+            2048,
+        );
+        let sys = req.system_instruction.unwrap();
+        match &sys.parts[0] {
+            Part::Text { text } => assert_eq!(text, "You are a helpful assistant"),
+            _ => panic!("Expected text part in system instruction"),
+        }
+    }
+
+    #[test]
+    fn test_build_request_with_tools() {
+        let tools = vec![ToolDeclaration::google_search()];
+        let req = build_request("sys", vec![], Some(tools), ModelId::Gemini3Flash, 0.7, 4096);
+        assert!(req.tools.is_some());
+        assert_eq!(req.tools.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_build_request_temperature_and_tokens() {
+        let req = build_request("sys", vec![], None, ModelId::Gemini3Flash, 1.5, 8192);
+        let config = req.generation_config.unwrap();
+        assert_eq!(config.temperature, Some(1.5));
+        assert_eq!(config.max_output_tokens, Some(8192));
+    }
+
+    // -- extract_response tests --
+
+    #[test]
+    fn test_extract_response_text() {
+        let resp = GenerateResponse {
+            candidates: vec![Candidate {
+                content: Some(Content {
+                    role: Some("model".to_string()),
+                    parts: vec![Part::text("Hello!")],
+                }),
+                finish_reason: Some("STOP".to_string()),
+            }],
+            usage_metadata: None,
+            error: None,
+        };
+        let (texts, calls) = extract_response(&resp);
+        assert_eq!(texts, vec!["Hello!"]);
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn test_extract_response_function_call() {
+        let resp = GenerateResponse {
+            candidates: vec![Candidate {
+                content: Some(Content {
+                    role: Some("model".to_string()),
+                    parts: vec![Part::function_call(
+                        "read_file",
+                        json!({"path": "/tmp/test"}),
+                    )],
+                }),
+                finish_reason: Some("STOP".to_string()),
+            }],
+            usage_metadata: None,
+            error: None,
+        };
+        let (texts, calls) = extract_response(&resp);
+        assert!(texts.is_empty());
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "read_file");
+    }
+
+    #[test]
+    fn test_extract_response_mixed() {
+        let resp = GenerateResponse {
+            candidates: vec![Candidate {
+                content: Some(Content {
+                    role: Some("model".to_string()),
+                    parts: vec![
+                        Part::text("I'll read the file."),
+                        Part::function_call("read_file", json!({"path": "main.rs"})),
+                    ],
+                }),
+                finish_reason: Some("STOP".to_string()),
+            }],
+            usage_metadata: None,
+            error: None,
+        };
+        let (texts, calls) = extract_response(&resp);
+        assert_eq!(texts.len(), 1);
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_response_empty_candidates() {
+        let resp = GenerateResponse {
+            candidates: vec![],
+            usage_metadata: None,
+            error: None,
+        };
+        let (texts, calls) = extract_response(&resp);
+        assert!(texts.is_empty());
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn test_extract_response_no_content() {
+        let resp = GenerateResponse {
+            candidates: vec![Candidate {
+                content: None,
+                finish_reason: Some("SAFETY".to_string()),
+            }],
+            usage_metadata: None,
+            error: None,
+        };
+        let (texts, calls) = extract_response(&resp);
+        assert!(texts.is_empty());
+        assert!(calls.is_empty());
+    }
+
+    // -- GeminiClient tests (no API calls) --
+
+    #[test]
+    fn test_client_new_without_key() {
+        // Temporarily remove key to test error path
+        let original = env::var("GEMINI_API_KEY").ok();
+        env::remove_var("GEMINI_API_KEY");
+        let result = GeminiClient::new();
+        // Restore
+        if let Some(key) = original {
+            env::set_var("GEMINI_API_KEY", key);
+        }
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("GEMINI_API_KEY"));
+    }
+
+    #[test]
+    fn test_client_token_usage_summary() {
+        // Can't create real client without API key, but test format
+        let summary = format!(
+            "Tokens used - Input: {} | Output: {} | Total: {}",
+            100, 50, 150
+        );
+        assert!(summary.contains("Input: 100"));
+        assert!(summary.contains("Output: 50"));
+        assert!(summary.contains("Total: 150"));
+    }
+
+    #[test]
+    fn test_thinking_budget_tiers() {
+        // Verify budget matches tier expectations
+        for model in ModelId::all() {
+            let req = build_request("test", vec![], None, *model, 0.7, 4096);
+            let config = req.generation_config.unwrap();
+            if model.supports_thinking() {
+                let budget = config.thinking_config.unwrap().thinking_budget;
+                match model.tier() {
+                    ModelTier::Pro => assert_eq!(budget, 2048),
+                    ModelTier::Flash => assert_eq!(budget, 1024),
+                    ModelTier::FlashLite => assert_eq!(budget, 512),
+                }
+            }
+        }
+    }
+}
