@@ -62,17 +62,15 @@ sleep 5
 echo "TUI initialized, screen capture:"
 tmux capture-pane -t "$SESSION" -p 2>/dev/null | head -5
 
-# Send the test command with clear specs for what to build
+# Send the test command using tmux buffer (more reliable than send-keys for long text)
 echo "Sending test command..."
-PROMPT="Create a Python todo list app using the bottle web framework. Requirements:
-1. Create app.py with these routes: GET / to list todos, POST /add to add a todo, POST /done/<id> to mark done, POST /delete/<id> to delete
-2. Create requirements.txt with bottle as dependency
-3. Use an in-memory list to store todos (no database needed)
-4. The app should run on port 18765 (read from BOTTLE_PORT env var with default 18765)
-5. Each todo should have: id (int), text (str), done (bool)
-6. Import bottle at the top of app.py
-Please create both files now."
-tmux send-keys -t "$SESSION" "$PROMPT" Enter
+# First verify the TUI is responsive by sending a simple keystroke
+tmux send-keys -t "$SESSION" -l "Create app.py and requirements.txt for a bottle.py todo app with add list done delete routes."
+sleep 1
+echo "Text entered, capturing screen..."
+tmux capture-pane -t "$SESSION" -p 2>/dev/null | tail -5
+echo "Pressing Enter..."
+tmux send-keys -t "$SESSION" Enter
 
 # Wait for the agent to work (generous timeout for free tier)
 echo "Waiting for agent to complete (up to 180 seconds)..."
