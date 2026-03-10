@@ -175,6 +175,14 @@
 - [x] 16 new command tests: config clamping, safety aliases, MCP add/rm success paths
 - [x] 535 unit tests
 
+## Completed (v0.9.6)
+- [x] File write size limit (5MB max) to prevent disk exhaustion on RPi3
+- [x] Better edit_file ambiguity feedback: returns match_lines array for model to provide unique context
+- [x] API error cascading: message → status → code (503 hints no longer lost)
+- [x] Expanded safety: block sudo rm, dd of=, find -delete, shell redirects to /etc /sys /proc
+- [x] Smarter thinking token preservation: keep last 3 messages' thinking for multi-turn reasoning
+- [x] 547 unit tests
+
 # Lessons Learned
 
 ## TLS Crate Selection
