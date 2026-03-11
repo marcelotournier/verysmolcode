@@ -21,6 +21,12 @@
   - CRITICAL REQUIREMENT: All decisions must take into account low end hardware. It should provide a snappy user experience on a Raspberrypi 3
   - CRITICAL: User experience on token consumption should be good as well, the user should not be surprised with "out of tokens" errors
   - Add a friendly UX design in the experience, blueish colors and visually comfortable colors that work well on TMUX limitations. Make the UX good enough to fix a 80 x 30 col terminal
+- How to use the Makefile:
+  - A Makefile exists at the repo root — use it for all common commands instead of typing them manually
+  - `make help` shows all available targets
+  - Common targets: `make test` (unit tests), `make check` (fmt+lint+test), `make build`, `make release`, `make install`, `make lint`, `make fmt`, `make clean`, `make disk`
+  - When adding a new frequently-used command to the project, add a corresponding target to the Makefile and update its help text
+  - Use `make tag VERSION=x.y.z` to create and push release tags
 - How to develop:
   - Start by checking if repo is good (gitignore, etc)
   - Setup rust development env
