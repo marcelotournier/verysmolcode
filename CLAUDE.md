@@ -373,6 +373,20 @@
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
 
+## Completed (v0.14.0) — /loop Command (Ralph-style iterative loops)
+- [x] /loop <prompt> — run prompt after each agent completion (immediate, Ralph-style)
+- [x] /loop 5m <prompt> — run prompt every N minutes/seconds/hours (5m, 30s, 1h)
+- [x] /loop --max N <prompt> — limit to N iterations then auto-stop
+- [x] /loop 5m --max 10 <prompt> — combined interval + max iterations
+- [x] /loop off / /loop cancel / /loop-cancel — cancel active loop
+- [x] /loop (no args) — show current loop status or usage help
+- [x] LoopConfig struct: prompt, interval_secs, max_iterations, iterations_run, next_run_at
+- [x] tick() checks: !is_processing && next_run_at <= now to trigger next iteration
+- [x] Telegram receives loop [loop] Iteration N status messages
+- [x] Two-way Telegram broadcast from v0.13.2 (AI responses + tool names + WARN → Telegram)
+- [x] 16 new loop command tests + parse_interval/parse_loop_args unit tests
+- [x] 495 unit tests total
+
 ## Completed (v0.13.1) — Test Coverage & Quality
 - [x] 22 new app.rs tests: submit_input (11 slash commands), tick events (9 channel tests)
 - [x] 16 new ui.rs tests: render_markdown, render_inline_markdown, format_token_count, build_message_lines
@@ -535,10 +549,10 @@ Nice-to-have features for power users.
 - [ ] JavaScript/Python plugin scripts
 - [ ] Plugin commands appear as slash commands
 
-### P4.5 - /loop Command
-- [ ] Run a prompt on recurring interval
-- [ ] Cron-based scheduling
-- [ ] Auto-expire after configurable duration
+### P4.5 - /loop Command ✅ (v0.14.0)
+- [x] Run a prompt on recurring interval (5m, 30s, 1h)
+- [x] Immediate mode: run after each completion (Ralph-style)
+- [x] Auto-expire after configurable iterations (--max N)
 
 ### P4.6 - /batch Command
 - [ ] Parallel code changes across multiple files

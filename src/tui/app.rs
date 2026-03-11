@@ -14,6 +14,14 @@ pub enum DisplayMessage {
     ModelInfo(String),
 }
 
+struct LoopConfig {
+    prompt: String,
+    interval_secs: u64,  // 0 = run immediately after each completion
+    max_iterations: u32, // 0 = unlimited
+    iterations_run: u32, // how many iterations submitted so far
+    next_run_at: std::time::Instant,
+}
+
 pub struct App {
     pub input: String,
     pub cursor_pos: usize,
@@ -72,6 +80,9 @@ pub struct App {
     telegram_out_tx: Option<mpsc::Sender<String>>,
     pub telegram_enabled: bool,
 
+    // Loop mode (Ralph-style iterative prompt repetition)
+    loop_config: Option<LoopConfig>,
+
     // Dirty flag: only redraw when state changes
     pub dirty: bool,
 }
@@ -115,6 +126,7 @@ impl App {
             telegram_rx: None,
             telegram_out_tx: None,
             telegram_enabled: false,
+            loop_config: None,
             dirty: true,
         };
 
@@ -484,6 +496,74 @@ impl App {
                         "Conversation compacted to save tokens.".to_string(),
                     ));
                 }
+                CommandResponse::StartLoop {
+                    prompt,
+                    interval_secs,
+                    max_iterations,
+                } => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    let interval_desc = if interval_secs == 0 {
+                        "immediately after each completion".to_string()
+                    } else if interval_secs < 120 {
+                        format!("every {}s", interval_secs)
+                    } else if interval_secs < 3600 {
+                        format!("every {}m", interval_secs / 60)
+                    } else {
+                        format!("every {}h", interval_secs / 3600)
+                    };
+                    let max_desc = if max_iterations == 0 {
+                        "unlimited iterations".to_string()
+                    } else {
+                        format!("{} iterations", max_iterations)
+                    };
+                    self.messages.push(DisplayMessage::Status(format!(
+                        "[loop] Started: {} ({}). Use /loop-cancel to stop.",
+                        interval_desc, max_desc
+                    )));
+                    // First iteration: submit immediately
+                    self.loop_config = Some(LoopConfig {
+                        prompt: prompt.clone(),
+                        interval_secs,
+                        max_iterations,
+                        iterations_run: 1,
+                        // Prevent loop check from re-triggering until agent completes
+                        next_run_at: std::time::Instant::now()
+                            + std::time::Duration::from_secs(86400),
+                    });
+                    self.send_to_agent(&prompt);
+                }
+                CommandResponse::LoopCancel => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    if self.loop_config.take().is_some() {
+                        self.messages
+                            .push(DisplayMessage::Status("[loop] Cancelled.".to_string()));
+                    } else {
+                        self.messages
+                            .push(DisplayMessage::Status("[loop] No active loop.".to_string()));
+                    }
+                }
+                CommandResponse::LoopStatus => {
+                    self.messages.push(DisplayMessage::User(input.clone()));
+                    let msg = if let Some(ref cfg) = self.loop_config {
+                        let interval_desc = if cfg.interval_secs == 0 {
+                            "immediately after completion".to_string()
+                        } else {
+                            format!("every {}s", cfg.interval_secs)
+                        };
+                        let max_desc = if cfg.max_iterations == 0 {
+                            "unlimited".to_string()
+                        } else {
+                            format!("{}", cfg.max_iterations)
+                        };
+                        format!(
+                            "[loop] Active\nPrompt: \"{}\"\nInterval: {}\nMax: {}\nRun so far: {}",
+                            cfg.prompt, interval_desc, max_desc, cfg.iterations_run
+                        )
+                    } else {
+                        "[loop] No active loop.\nUse /loop <prompt> to start one.\nExamples:\n  /loop check the build\n  /loop 5m run tests\n  /loop --max 3 optimize the code".to_string()
+                    };
+                    self.messages.push(DisplayMessage::Status(msg));
+                }
                 CommandResponse::Retry => {
                     // Resend the last non-command message
                     if let Some(last) = self.last_user_message() {
@@ -825,6 +905,56 @@ impl App {
             self.is_processing = false;
             self.model_name = "Ready".to_string();
             self.dirty = true;
+
+            // Schedule next loop iteration after this completion
+            if let Some(ref mut cfg) = self.loop_config {
+                cfg.next_run_at =
+                    std::time::Instant::now() + std::time::Duration::from_secs(cfg.interval_secs);
+            }
+        }
+
+        // Check if loop should trigger the next iteration
+        if !self.is_processing {
+            let loop_ready = self.loop_config.as_ref().and_then(|cfg| {
+                if cfg.next_run_at <= std::time::Instant::now() {
+                    Some((
+                        cfg.prompt.clone(),
+                        cfg.max_iterations,
+                        cfg.iterations_run + 1,
+                    ))
+                } else {
+                    None
+                }
+            });
+
+            if let Some((prompt, max, iter)) = loop_ready {
+                if max > 0 && iter > max {
+                    self.loop_config = None;
+                    self.messages.push(DisplayMessage::Status(format!(
+                        "[loop] Completed all {} iterations",
+                        max
+                    )));
+                    self.dirty = true;
+                } else {
+                    if let Some(ref mut cfg) = self.loop_config {
+                        cfg.iterations_run = iter;
+                        // Prevent re-trigger while agent is running
+                        cfg.next_run_at =
+                            std::time::Instant::now() + std::time::Duration::from_secs(86400);
+                    }
+                    let max_str = if max > 0 {
+                        format!("/{}", max)
+                    } else {
+                        String::new()
+                    };
+                    self.messages.push(DisplayMessage::Status(format!(
+                        "[loop] Iteration {}{}",
+                        iter, max_str
+                    )));
+                    self.dirty = true;
+                    self.send_to_agent(&prompt);
+                }
+            }
         }
     }
 
@@ -1254,6 +1384,13 @@ pub enum CommandResponse {
     NewSession,
     ToggleSearch,
     CopyLast,
+    StartLoop {
+        prompt: String,
+        interval_secs: u64,
+        max_iterations: u32,
+    },
+    LoopCancel,
+    LoopStatus,
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
@@ -1424,6 +1561,7 @@ impl App {
             telegram_rx: None,
             telegram_out_tx: None,
             telegram_enabled: false,
+            loop_config: None,
             dirty: true,
         }
     }

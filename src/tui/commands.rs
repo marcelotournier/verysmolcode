@@ -50,6 +50,11 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "Send a test message to verify Telegram connection",
     ),
     ("/telegram-off", "Disable Telegram integration"),
+    (
+        "/loop",
+        "Loop a prompt repeatedly: /loop [5m] [--max N] <prompt>",
+    ),
+    ("/loop-cancel", "Cancel the active loop"),
 ];
 
 pub fn handle_command(input: &str) -> CommandResponse {
@@ -106,6 +111,11 @@ pub fn handle_command(input: &str) -> CommandResponse {
             help.push_str("  Tab        Select command from popup\n");
             help.push_str("  Esc        Stop agent / Dismiss popup\n");
             help.push_str("  \\ + Enter  Multi-line input\n");
+            help.push_str("\n\u{1F504} Loop Mode\n");
+            help.push_str("  /loop <prompt>        Loop prompt after each completion\n");
+            help.push_str("  /loop 5m <prompt>     Loop every 5 minutes\n");
+            help.push_str("  /loop --max N <prompt> Loop N times then stop\n");
+            help.push_str("  /loop-cancel          Cancel active loop\n");
             help.push_str("\n\u{1F4BB} Shell Mode\n");
             help.push_str("  !<command>  Run shell command directly (e.g. !ls -la)\n");
             help.push_str("\n\u{1F4A1} Tip: Type / to see command suggestions!");
@@ -506,11 +516,97 @@ pub fn handle_command(input: &str) -> CommandResponse {
                 CommandResponse::Resume(Some(args.to_string()))
             }
         }
+        "/loop" => {
+            let trimmed = args.trim();
+            if trimmed.is_empty() {
+                return CommandResponse::LoopStatus;
+            }
+            if trimmed == "off" || trimmed == "cancel" || trimmed == "stop" {
+                return CommandResponse::LoopCancel;
+            }
+            let (interval_secs, max_iterations, prompt) = parse_loop_args(trimmed);
+            if prompt.is_empty() {
+                CommandResponse::Message(
+                    "Usage: /loop [interval] [--max N] <prompt>\n\
+                     Examples:\n\
+                     /loop check the build          (runs after each completion)\n\
+                     /loop 5m run tests             (runs every 5 minutes)\n\
+                     /loop --max 3 optimize code    (3 iterations max)\n\
+                     /loop 10m --max 5 check status (every 10m, max 5 times)\n\
+                     /loop off                      (cancel active loop)"
+                        .to_string(),
+                )
+            } else {
+                CommandResponse::StartLoop {
+                    prompt,
+                    interval_secs,
+                    max_iterations,
+                }
+            }
+        }
+        "/loop-cancel" | "/loop-stop" => CommandResponse::LoopCancel,
         _ => CommandResponse::Message(format!(
             "Unknown command: {}. Type /help for available commands.",
             cmd
         )),
     }
+}
+
+/// Parse interval string: "5m" -> 300, "30s" -> 30, "1h" -> 3600
+pub fn parse_interval(s: &str) -> Option<u64> {
+    if let Some(n) = s.strip_suffix('m').and_then(|n| n.parse::<u64>().ok()) {
+        if n > 0 {
+            Some(n * 60)
+        } else {
+            None
+        }
+    } else if let Some(n) = s.strip_suffix('s').and_then(|n| n.parse::<u64>().ok()) {
+        if n > 0 {
+            Some(n)
+        } else {
+            None
+        }
+    } else if let Some(n) = s.strip_suffix('h').and_then(|n| n.parse::<u64>().ok()) {
+        if n > 0 {
+            Some(n * 3600)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+/// Parse loop args: "[interval] [--max N] <prompt>"
+/// Returns (interval_secs, max_iterations, prompt)
+pub fn parse_loop_args(args: &str) -> (u64, u32, String) {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    let mut interval = 0u64;
+    let mut max_iter = 0u32;
+    let mut i = 0;
+
+    // Optional first arg: interval like "5m", "30s", "1h"
+    if let Some(&first) = parts.first() {
+        if let Some(secs) = parse_interval(first) {
+            interval = secs;
+            i = 1;
+        }
+    }
+
+    let mut prompt_parts: Vec<&str> = Vec::new();
+    while i < parts.len() {
+        if (parts[i] == "--max" || parts[i] == "-n") && i + 1 < parts.len() {
+            if let Ok(n) = parts[i + 1].parse::<u32>() {
+                max_iter = n;
+                i += 2;
+                continue;
+            }
+        }
+        prompt_parts.push(parts[i]);
+        i += 1;
+    }
+
+    (interval, max_iter, prompt_parts.join(" "))
 }
 
 pub fn autocomplete(input: &str) -> Vec<String> {
@@ -769,5 +865,145 @@ mod tests {
         for (cmd, desc) in COMMANDS {
             assert!(!desc.is_empty(), "Command {} has empty description", cmd);
         }
+    }
+
+    #[test]
+    fn test_loop_no_args_returns_status() {
+        let resp = handle_command("/loop");
+        assert!(matches!(resp, CommandResponse::LoopStatus));
+    }
+
+    #[test]
+    fn test_loop_off_returns_cancel() {
+        assert!(matches!(
+            handle_command("/loop off"),
+            CommandResponse::LoopCancel
+        ));
+        assert!(matches!(
+            handle_command("/loop cancel"),
+            CommandResponse::LoopCancel
+        ));
+        assert!(matches!(
+            handle_command("/loop stop"),
+            CommandResponse::LoopCancel
+        ));
+    }
+
+    #[test]
+    fn test_loop_cancel_command() {
+        assert!(matches!(
+            handle_command("/loop-cancel"),
+            CommandResponse::LoopCancel
+        ));
+        assert!(matches!(
+            handle_command("/loop-stop"),
+            CommandResponse::LoopCancel
+        ));
+    }
+
+    #[test]
+    fn test_loop_no_prompt_returns_usage() {
+        let resp = handle_command("/loop 5m");
+        // "5m" parses as interval, no prompt remains → Message
+        assert!(matches!(resp, CommandResponse::Message(_)));
+    }
+
+    #[test]
+    fn test_loop_immediate_prompt() {
+        let resp = handle_command("/loop check the build");
+        assert!(
+            matches!(resp, CommandResponse::StartLoop { ref prompt, interval_secs: 0, max_iterations: 0 } if prompt == "check the build")
+        );
+    }
+
+    #[test]
+    fn test_loop_with_interval_minutes() {
+        let resp = handle_command("/loop 5m run tests");
+        assert!(
+            matches!(resp, CommandResponse::StartLoop { ref prompt, interval_secs: 300, max_iterations: 0 } if prompt == "run tests")
+        );
+    }
+
+    #[test]
+    fn test_loop_with_interval_seconds() {
+        let resp = handle_command("/loop 30s do something");
+        assert!(
+            matches!(resp, CommandResponse::StartLoop { ref prompt, interval_secs: 30, max_iterations: 0 } if prompt == "do something")
+        );
+    }
+
+    #[test]
+    fn test_loop_with_interval_hours() {
+        let resp = handle_command("/loop 1h check status");
+        assert!(
+            matches!(resp, CommandResponse::StartLoop { ref prompt, interval_secs: 3600, max_iterations: 0 } if prompt == "check status")
+        );
+    }
+
+    #[test]
+    fn test_loop_with_max_iterations() {
+        let resp = handle_command("/loop --max 5 optimize code");
+        assert!(
+            matches!(resp, CommandResponse::StartLoop { ref prompt, interval_secs: 0, max_iterations: 5 } if prompt == "optimize code")
+        );
+    }
+
+    #[test]
+    fn test_loop_interval_and_max() {
+        let resp = handle_command("/loop 10m --max 3 check build");
+        assert!(
+            matches!(resp, CommandResponse::StartLoop { ref prompt, interval_secs: 600, max_iterations: 3 } if prompt == "check build")
+        );
+    }
+
+    #[test]
+    fn test_parse_interval() {
+        assert_eq!(parse_interval("5m"), Some(300));
+        assert_eq!(parse_interval("30s"), Some(30));
+        assert_eq!(parse_interval("1h"), Some(3600));
+        assert_eq!(parse_interval("2h"), Some(7200));
+        assert_eq!(parse_interval("hello"), None);
+        assert_eq!(parse_interval("0m"), None); // 0 not allowed
+        assert_eq!(parse_interval(""), None);
+    }
+
+    #[test]
+    fn test_parse_loop_args_immediate() {
+        let (interval, max, prompt) = parse_loop_args("check the build");
+        assert_eq!(interval, 0);
+        assert_eq!(max, 0);
+        assert_eq!(prompt, "check the build");
+    }
+
+    #[test]
+    fn test_parse_loop_args_interval() {
+        let (interval, max, prompt) = parse_loop_args("5m run tests");
+        assert_eq!(interval, 300);
+        assert_eq!(max, 0);
+        assert_eq!(prompt, "run tests");
+    }
+
+    #[test]
+    fn test_parse_loop_args_max_only() {
+        let (interval, max, prompt) = parse_loop_args("--max 3 do work");
+        assert_eq!(interval, 0);
+        assert_eq!(max, 3);
+        assert_eq!(prompt, "do work");
+    }
+
+    #[test]
+    fn test_parse_loop_args_interval_and_max() {
+        let (interval, max, prompt) = parse_loop_args("10m --max 5 check status");
+        assert_eq!(interval, 600);
+        assert_eq!(max, 5);
+        assert_eq!(prompt, "check status");
+    }
+
+    #[test]
+    fn test_parse_loop_args_empty() {
+        let (interval, max, prompt) = parse_loop_args("");
+        assert_eq!(interval, 0);
+        assert_eq!(max, 0);
+        assert_eq!(prompt, "");
     }
 }

@@ -16,6 +16,8 @@ A lightweight TUI coding assistant powered by Gemini API free tier, designed for
 - **Token-Aware**: `/tokens` dashboard, `/fast`/`/smart` model selection, rate limit warnings, conversation compaction, and thinking budget control
 - **Tool Timing**: Each tool call shows execution time — helps identify bottlenecks on slow hardware
 - **Safe by Default**: Blocks destructive operations, validates paths, and prevents dangerous commands
+- **Loop Mode**: `/loop <prompt>` runs a prompt repeatedly — immediately after each completion (Ralph-style) or on a timed interval (e.g. `5m`, `30s`). Great for iterative refinement and monitoring tasks
+- **Telegram Integration**: Connect a Telegram bot to receive agent messages on your phone, and send prompts back from Telegram
 - **Lightweight**: ~5MB binary, minimal memory footprint, runs on Raspberry Pi 3
 
 ## Installation
@@ -89,6 +91,11 @@ vsc -v
 | `/mcp-rm`    | Remove MCP server: `/mcp-rm name`                |
 | `/todo`      | Show current task list (alias: `/t`)             |
 | `/retry`     | Retry the last message (alias: `/r`)             |
+| `/loop`      | Loop a prompt: `/loop [5m] [--max N] <prompt>`   |
+| `/loop-cancel`| Cancel the active loop                           |
+| `/telegram`  | Telegram bot setup: `/telegram setup <token> <id>`|
+| `/telegram-test`| Send a test Telegram message                  |
+| `/telegram-off`| Disable Telegram integration                   |
 | `/version`   | Show version information                          |
 | `/clear`     | Clear conversation and screen                     |
 | `/quit`      | Exit VerySmolCode                                 |
@@ -142,6 +149,54 @@ Default values:
   "safety_enabled": true
 }
 ```
+
+## Loop Mode
+
+Loop mode runs a prompt repeatedly — useful for iterative refinement (Ralph-style) or timed monitoring tasks:
+
+```bash
+# Run immediately after each completion (Ralph-style refinement)
+/loop check for build errors and fix them
+
+# Run every 5 minutes (timed polling)
+/loop 5m run the test suite and report results
+
+# Max 3 iterations then auto-stop
+/loop --max 3 optimize the code further
+
+# Combined: every 10 minutes, max 5 times
+/loop 10m --max 5 check if CI is green
+
+# Cancel the active loop
+/loop off
+# or
+/loop-cancel
+
+# Show loop status
+/loop
+```
+
+The loop status is also broadcast to Telegram if configured.
+
+## Telegram Integration
+
+Connect a Telegram bot to receive agent messages on your phone:
+
+```bash
+# 1. Chat with @BotFather on Telegram to get a bot token
+# 2. Send a message to your bot, then get your chat_id:
+#    https://api.telegram.org/bot<TOKEN>/getUpdates
+# 3. Setup in vsc:
+/telegram setup <bot_token> <chat_id>
+
+# Send a test message
+/telegram-test
+
+# Disable
+/telegram-off
+```
+
+Once configured, the agent's responses, tool calls, and warnings are forwarded to Telegram. You can also send messages from Telegram and they'll reach the agent.
 
 ## Architecture
 
