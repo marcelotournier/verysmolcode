@@ -912,8 +912,8 @@ impl App {
             // Telegram send errors are reported back with special prefix
             if let Some(err) = msg.strip_prefix("TELEGRAM_ERR:") {
                 self.messages.push(DisplayMessage::Error(format!(
-                    "\u{274C} Telegram error: {}",
-                    err
+                    "Telegram: {}",
+                    mask_telegram_token(err)
                 )));
                 needs_scroll = true;
                 continue;
@@ -1439,6 +1439,19 @@ pub enum CommandResponse {
     },
     LoopCancel,
     LoopStatus,
+}
+
+/// Mask bot token in Telegram API URLs so it's not exposed in error messages.
+/// Replaces `/bot<TOKEN>/` with `/bot****/`.
+fn mask_telegram_token(s: &str) -> String {
+    let mut result = s.to_string();
+    if let Some(pos) = result.find("/bot") {
+        let after_bot = pos + 4;
+        if let Some(slash_offset) = result[after_bot..].find('/') {
+            result.replace_range(after_bot..after_bot + slash_offset, "****");
+        }
+    }
+    result
 }
 
 fn summarize_tool_result(name: &str, result: &serde_json::Value) -> String {
