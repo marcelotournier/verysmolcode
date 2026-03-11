@@ -149,16 +149,16 @@ fn test_model_router_fallback() {
 fn test_model_router_fallback_for() {
     let mut router = ModelRouter::new();
 
-    // Fallback from 3.1 Pro should go to 2.5 Pro
-    let fb = router.fallback_for(ModelId::Gemini31Pro);
-    assert_eq!(fb, Some(ModelId::Gemini25Pro));
-
-    // Exhaust 2.5 Pro, fallback should be 3 Flash
-    for _ in 0..5 {
-        router.pro.record_request();
-    }
+    // Fallback from 3.1 Pro should go to 3 Flash (new order)
     let fb = router.fallback_for(ModelId::Gemini31Pro);
     assert_eq!(fb, Some(ModelId::Gemini3Flash));
+
+    // Exhaust 3 Flash, fallback should be 3.1 Flash-Lite
+    for _ in 0..10 {
+        router.g3_flash.record_request();
+    }
+    let fb = router.fallback_for(ModelId::Gemini31Pro);
+    assert_eq!(fb, Some(ModelId::Gemini31FlashLite));
 }
 
 #[test]

@@ -288,6 +288,7 @@ impl AgentLoop {
         // Planning mode gets fewer iterations (just reading + planning)
         let max_iterations = if self.planning_mode { 8 } else { 15 };
         let mut had_tool_calls = false;
+        let mut last_model_used = ModelId::Gemini3Flash; // Track for critic decision
         for iteration in 0..max_iterations {
             // Strip thinking tokens from history before resending to save tokens
             strip_thinking_from_history(&mut self.conversation);
@@ -303,11 +304,12 @@ impl AgentLoop {
             // This saves Pro budget (25/day) for initial reasoning
             let use_smart = prefer_smart && iteration == 0;
             let model = self.client.router.pick_model(use_smart).ok_or_else(|| {
-                "All models exhausted for today. Try again tomorrow, or check /status for limits"
+                "All models exhausted for today. Try again tomorrow, or check /status for limits."
                     .to_string()
             })?;
 
             on_event(AgentEvent::ModelSwitch(model.display_name().to_string()));
+            last_model_used = model;
 
             // Build system prompt
             let system_prompt = {
@@ -349,10 +351,10 @@ impl AgentLoop {
             };
 
             // Make API call with automatic fallback chain on rate limit/overload
-            on_event(AgentEvent::Status("Thinking...".to_string()));
             let response = {
                 let mut current_model = model;
                 let mut retried = false;
+                let mut exp_backoff_secs: u64 = 2;
                 loop {
                     let req = build_request(
                         &system_prompt,
@@ -371,9 +373,8 @@ impl AgentLoop {
                                 {
                                     if wait.as_secs() <= 15 && wait.as_secs() > 0 {
                                         on_event(AgentEvent::Status(format!(
-                                            "Rate limited, waiting {}s for {}...",
+                                            "Rate limited, waiting {}s...",
                                             wait.as_secs(),
-                                            current_model.display_name()
                                         )));
                                         std::thread::sleep(wait);
                                         retried = true;
@@ -381,21 +382,40 @@ impl AgentLoop {
                                     }
                                 }
                             }
-                            // Fall back to a weaker model
+                            // Fall back to next model in chain (silently — status bar shows model)
                             if let Some(fb) = self.client.router.fallback_for(current_model) {
-                                on_event(AgentEvent::Status(format!(
-                                    "{} unavailable, trying {}...",
-                                    current_model.display_name(),
-                                    fb.display_name()
-                                )));
                                 on_event(AgentEvent::ModelSwitch(fb.display_name().to_string()));
                                 current_model = fb;
                                 retried = false;
                             } else {
-                                return Err(format!(
-                                    "{}. All models exhausted — try again in a few minutes, or use /fast to conserve Pro budget",
-                                    e
-                                ));
+                                // All models exhausted: exponential backoff then retry from start
+                                if exp_backoff_secs <= 64 {
+                                    on_event(AgentEvent::Status(format!(
+                                        "All models rate-limited, waiting {}s before retry...",
+                                        exp_backoff_secs
+                                    )));
+                                    std::thread::sleep(std::time::Duration::from_secs(
+                                        exp_backoff_secs,
+                                    ));
+                                    exp_backoff_secs *= 2;
+                                    // Restart from the top of the priority order
+                                    current_model =
+                                        self.client.router.pick_model(use_smart).ok_or_else(
+                                            || {
+                                                "All models exhausted for today. Check /status."
+                                                    .to_string()
+                                            },
+                                        )?;
+                                    on_event(AgentEvent::ModelSwitch(
+                                        current_model.display_name().to_string(),
+                                    ));
+                                    retried = false;
+                                } else {
+                                    return Err(format!(
+                                        "{}. All models exhausted — try again later or check /status",
+                                        e
+                                    ));
+                                }
                             }
                         }
                         Err(e) if is_transient_error(&e) => {
@@ -439,10 +459,26 @@ impl AgentLoop {
                 }
             }
 
-            // Emit text responses
+            // Emit text responses, detecting embedded slash commands
             for text in &texts {
                 if !text.trim().is_empty() {
-                    on_event(AgentEvent::Text(text.clone()));
+                    // Check for agent-initiated slash commands (format: CMD:/command)
+                    let mut remaining_lines = Vec::new();
+                    for line in text.lines() {
+                        let trimmed = line.trim();
+                        if let Some(cmd) = trimmed.strip_prefix("CMD:") {
+                            let cmd = cmd.trim().to_string();
+                            if cmd.starts_with('/') {
+                                on_event(AgentEvent::ExecuteCommand(cmd));
+                                continue;
+                            }
+                        }
+                        remaining_lines.push(line);
+                    }
+                    let filtered = remaining_lines.join("\n");
+                    if !filtered.trim().is_empty() {
+                        on_event(AgentEvent::Text(filtered));
+                    }
                 }
             }
 
@@ -559,13 +595,170 @@ impl AgentLoop {
         // Run critic check only if files were actually modified (saves API calls)
         // Skip critic for read-only operations, planning mode, or when no budget
         if !self.planning_mode && had_tool_calls && self.files_modified {
-            self.run_critic(user_input, &mut on_event)?;
+            let is_pro = matches!(last_model_used, ModelId::Gemini31Pro | ModelId::Gemini25Pro);
+            if is_pro {
+                // Pro used: show critic feedback to user (visible review)
+                self.run_critic(user_input, &mut on_event)?;
+            } else {
+                // Non-pro used: silent critic — if NEEDS_WORK, feed feedback back
+                // as a follow-up prompt so the agent fixes its own work silently
+                self.run_silent_critic(user_input, &mut on_event)?;
+            }
         }
 
         Ok(())
     }
 
-    /// Code review step: verify the work with actual diff context
+    /// Silent critic for non-pro models: runs code review without showing results to user.
+    /// If NEEDS_WORK, feeds the feedback back as a follow-up prompt to fix silently.
+    fn run_silent_critic<F>(&mut self, original_task: &str, on_event: &mut F) -> Result<(), String>
+    where
+        F: FnMut(AgentEvent),
+    {
+        let critic_model = if self.client.router.g3_flash_lite.can_request() {
+            ModelId::Gemini31FlashLite
+        } else if self.client.router.flash_lite.can_request() {
+            ModelId::Gemini25FlashLite
+        } else {
+            return Ok(()); // No budget for critic, skip silently
+        };
+
+        let diff_output = {
+            let diff_result = crate::tools::git::git_diff(&serde_json::json!({}));
+            diff_result
+                .get("output")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+
+        let diff_context = if diff_output.is_empty() {
+            String::new()
+        } else {
+            let truncated = safe_truncate(&diff_output, 3000);
+            format!("\n\nGit diff:\n```\n{}\n```", truncated)
+        };
+
+        let critic_prompt = format!(
+            "Code review for task: {}\n{}\n\n\
+             Check: CORRECTNESS, BUGS, COMPLETENESS, STYLE.\n\
+             Respond ONLY with:\n\
+             - APPROVED\n\
+             - NEEDS_WORK: [specific issues]",
+            original_task, diff_context
+        );
+
+        let mut critic_conv = self.conversation.clone();
+        critic_conv.push(Content {
+            role: Some("user".to_string()),
+            parts: vec![Part::text(&critic_prompt)],
+        });
+
+        let request = build_request(
+            "You are a senior code reviewer. Be specific and concise.",
+            critic_conv,
+            None,
+            critic_model,
+            0.3,
+            512,
+        );
+
+        if let Ok(response) = self.client.generate(critic_model, &request) {
+            let (texts, _) = extract_response(&response);
+            let review_text = texts.join("\n");
+            let trimmed = review_text.trim();
+
+            // Only act on NEEDS_WORK — feed it back silently
+            if trimmed.starts_with("NEEDS_WORK") {
+                let issues = trimmed
+                    .strip_prefix("NEEDS_WORK:")
+                    .unwrap_or(trimmed)
+                    .trim()
+                    .to_string();
+
+                // Feed the feedback back as a follow-up prompt (user never sees this)
+                let followup = format!(
+                    "A code review found issues with your recent changes. Please fix them now:\n\n{}\n\nOriginal task: {}",
+                    issues, original_task
+                );
+
+                // Add the critic exchange to conversation history
+                self.conversation.push(Content {
+                    role: Some("user".to_string()),
+                    parts: vec![Part::text(&critic_prompt)],
+                });
+                if let Some(candidate) = response.candidates.first() {
+                    if let Some(ref content) = candidate.content {
+                        self.conversation.push(content.clone());
+                    }
+                }
+
+                // Now run the fixup turn
+                let fix_model = self.client.router.pick_model(false).unwrap_or(critic_model);
+                on_event(AgentEvent::ModelSwitch(
+                    fix_model.display_name().to_string(),
+                ));
+
+                self.conversation.push(Content {
+                    role: Some("user".to_string()),
+                    parts: vec![Part::text(&followup)],
+                });
+
+                let fix_req = build_request(
+                    &self.config.system_prompt,
+                    self.conversation.clone(),
+                    Some(self.get_tools(false)),
+                    fix_model,
+                    self.config.temperature,
+                    self.config.max_tokens_per_response,
+                );
+
+                if let Ok(fix_resp) = self.client.generate(fix_model, &fix_req) {
+                    let (fix_texts, fix_calls) = extract_response(&fix_resp);
+                    for text in &fix_texts {
+                        if !text.trim().is_empty() {
+                            on_event(AgentEvent::Text(text.clone()));
+                        }
+                    }
+                    if let Some(candidate) = fix_resp.candidates.first() {
+                        if let Some(ref content) = candidate.content {
+                            self.conversation.push(content.clone());
+                        }
+                    }
+                    // Execute any tool calls from fixup
+                    if !fix_calls.is_empty() {
+                        let mut fix_responses = Vec::new();
+                        for call in &fix_calls {
+                            on_event(AgentEvent::ToolCall {
+                                name: call.name.clone(),
+                                args: call.args.clone(),
+                            });
+                            let start = std::time::Instant::now();
+                            let result = ToolRegistry::execute(&call.name, &call.args);
+                            let duration_ms = start.elapsed().as_millis() as u64;
+                            on_event(AgentEvent::ToolResult {
+                                name: call.name.clone(),
+                                result: result.clone(),
+                                duration_ms,
+                            });
+                            fix_responses.push(Part::function_response(
+                                &call.name,
+                                truncate_tool_result(&result),
+                            ));
+                        }
+                        self.conversation.push(Content {
+                            role: Some("user".to_string()),
+                            parts: fix_responses,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Code review step: verify the work with actual diff context (shown to user)
     fn run_critic<F>(&mut self, original_task: &str, on_event: &mut F) -> Result<(), String>
     where
         F: FnMut(AgentEvent),
@@ -916,6 +1109,8 @@ pub enum AgentEvent {
         summary: String, // One-line for status bar
         display: String, // Full display for popup
     },
+    /// Agent requested a slash command to be executed (e.g. /compact, /loop off)
+    ExecuteCommand(String),
 }
 
 /// Check if an error is transient (network issues, timeouts) and worth retrying

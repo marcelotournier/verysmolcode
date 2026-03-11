@@ -32,7 +32,10 @@ pub struct Message {
     pub message_id: i64,
     pub chat: Chat,
     pub text: Option<String>,
+    pub caption: Option<String>,
     pub from: Option<User>,
+    pub photo: Option<Vec<PhotoSize>>,
+    pub document: Option<Document>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,6 +47,27 @@ pub struct Chat {
 pub struct User {
     pub id: i64,
     pub first_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PhotoSize {
+    pub file_id: String,
+    pub file_size: Option<u64>,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Document {
+    pub file_id: String,
+    pub file_name: Option<String>,
+    pub mime_type: Option<String>,
+    pub file_size: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TelegramFile {
+    file_path: Option<String>,
 }
 
 impl TelegramBot {
@@ -144,7 +168,7 @@ impl TelegramBot {
     }
 
     /// Poll for new messages (short poll with timeout).
-    /// Returns messages from our chat_id only.
+    /// Returns messages from our chat_id only. Includes attachment content when present.
     /// timeout_secs: how long the server should wait for updates (long polling)
     pub fn get_updates(&mut self, timeout_secs: u64) -> Result<Vec<String>, String> {
         let mut params = serde_json::json!({
@@ -182,11 +206,62 @@ impl TelegramBot {
 
             // Only process messages from our configured chat
             if let Some(msg) = update.message {
-                if msg.chat.id == self.chat_id {
-                    if let Some(text) = msg.text {
-                        if !text.is_empty() {
-                            messages.push(text);
+                if msg.chat.id != self.chat_id {
+                    continue;
+                }
+
+                let caption = msg.caption.clone().unwrap_or_default();
+
+                // Handle photo attachments
+                if let Some(photos) = &msg.photo {
+                    // Take the highest-resolution version (last element)
+                    if let Some(photo) = photos.last() {
+                        if let Some((b64, mime)) = self.download_file(&photo.file_id, "image/jpeg")
+                        {
+                            let text_part = if !caption.is_empty() {
+                                format!("[Photo] {}\n[data:{}:{}]", caption, mime, b64)
+                            } else {
+                                format!("[Photo attached]\n[data:{}:{}]", mime, b64)
+                            };
+                            messages.push(text_part);
+                        } else if !caption.is_empty() {
+                            messages.push(format!("[Photo] {}", caption));
                         }
+                        continue;
+                    }
+                }
+
+                // Handle document attachments
+                if let Some(doc) = &msg.document {
+                    let fallback_mime = doc
+                        .mime_type
+                        .clone()
+                        .unwrap_or_else(|| "application/octet-stream".to_string());
+                    let filename = doc
+                        .file_name
+                        .clone()
+                        .unwrap_or_else(|| "document".to_string());
+
+                    if let Some((b64, mime)) = self.download_file(&doc.file_id, &fallback_mime) {
+                        let text_part = if !caption.is_empty() {
+                            format!(
+                                "[Document: {}] {}\n[data:{}:{}]",
+                                filename, caption, mime, b64
+                            )
+                        } else {
+                            format!("[Document: {}]\n[data:{}:{}]", filename, mime, b64)
+                        };
+                        messages.push(text_part);
+                    } else if !caption.is_empty() {
+                        messages.push(format!("[Document: {}] {}", filename, caption));
+                    }
+                    continue;
+                }
+
+                // Plain text message
+                if let Some(text) = msg.text {
+                    if !text.is_empty() {
+                        messages.push(text);
                     }
                 }
             }
@@ -219,6 +294,134 @@ impl TelegramBot {
 
     pub fn chat_id(&self) -> i64 {
         self.chat_id
+    }
+
+    /// Get a file's download path from its file_id (max 20MB per Telegram limits)
+    fn get_file_path(&self, file_id: &str) -> Option<String> {
+        let resp = ureq::post(&self.api_url("getFile"))
+            .set("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(10))
+            .send_json(serde_json::json!({"file_id": file_id}))
+            .ok()?;
+
+        let result: TelegramResponse<TelegramFile> = resp.into_json().ok()?;
+        if result.ok {
+            result.result.and_then(|f| f.file_path)
+        } else {
+            None
+        }
+    }
+
+    /// Download a file by file_id, returns base64-encoded content and mime type
+    fn download_file(&self, file_id: &str, fallback_mime: &str) -> Option<(String, String)> {
+        let file_path = self.get_file_path(file_id)?;
+        let url = format!(
+            "https://api.telegram.org/file/bot{}/{}",
+            self.token, file_path
+        );
+
+        let resp = ureq::get(&url)
+            .timeout(std::time::Duration::from_secs(30))
+            .call()
+            .ok()?;
+
+        // Detect MIME type from extension or fallback
+        let mime = if file_path.ends_with(".jpg") || file_path.ends_with(".jpeg") {
+            "image/jpeg"
+        } else if file_path.ends_with(".png") {
+            "image/png"
+        } else if file_path.ends_with(".gif") {
+            "image/gif"
+        } else if file_path.ends_with(".webp") {
+            "image/webp"
+        } else if file_path.ends_with(".pdf") {
+            "application/pdf"
+        } else {
+            fallback_mime
+        };
+
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut resp.into_reader(), &mut bytes).ok()?;
+
+        // Limit to 2MB to avoid memory pressure on RPi3
+        if bytes.len() > 2 * 1024 * 1024 {
+            return None;
+        }
+
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Some((b64, mime.to_string()))
+    }
+
+    /// Send a file (document) to the configured chat
+    pub fn send_document(&self, file_path: &str, caption: Option<&str>) -> Result<(), String> {
+        use std::fs;
+        let data =
+            fs::read(file_path).map_err(|e| format!("Failed to read file {}: {}", file_path, e))?;
+
+        // For files >50MB Telegram requires upload via URL — too large for free bots anyway
+        if data.len() > 50 * 1024 * 1024 {
+            return Err("File too large for Telegram (max 50MB)".to_string());
+        }
+
+        let filename = std::path::Path::new(file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file");
+
+        // Use multipart form for file upload
+        let boundary = "----TelegramBoundary";
+        let mut body = Vec::new();
+        let chat_id_str = self.chat_id.to_string();
+
+        // chat_id field
+        body.extend_from_slice(
+            format!(
+                "--{}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{}\r\n",
+                boundary, chat_id_str
+            )
+            .as_bytes(),
+        );
+
+        // caption field
+        if let Some(cap) = caption {
+            body.extend_from_slice(
+                format!(
+                    "--{}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{}\r\n",
+                    boundary, cap
+                )
+                .as_bytes(),
+            );
+        }
+
+        // document field
+        body.extend_from_slice(
+            format!(
+                "--{}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{}\"\r\nContent-Type: application/octet-stream\r\n\r\n",
+                boundary, filename
+            ).as_bytes()
+        );
+        body.extend_from_slice(&data);
+        body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+        let content_type = format!("multipart/form-data; boundary={}", boundary);
+        let resp = ureq::post(&self.api_url("sendDocument"))
+            .set("Content-Type", &content_type)
+            .timeout(std::time::Duration::from_secs(60))
+            .send_bytes(&body)
+            .map_err(|e| format!("Telegram file send failed: {}", e))?;
+
+        let result: TelegramResponse<serde_json::Value> = resp
+            .into_json()
+            .map_err(|e| format!("Telegram parse error: {}", e))?;
+
+        if !result.ok {
+            return Err(format!(
+                "Telegram API error: {}",
+                result.description.unwrap_or_default()
+            ));
+        }
+        Ok(())
     }
 }
 

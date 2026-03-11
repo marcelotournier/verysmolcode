@@ -42,7 +42,7 @@ fn test_config_command_timeout_default() {
 #[test]
 fn test_config_auto_compact_threshold_default() {
     let config = Config::default();
-    assert_eq!(config.auto_compact_threshold, 24000);
+    assert_eq!(config.auto_compact_threshold, 160000);
 }
 
 #[test]

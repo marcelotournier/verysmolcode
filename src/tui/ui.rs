@@ -72,26 +72,48 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     if app.search_grounding {
         badges.push_str(" [WEB]");
     }
-    let title = if app.is_processing {
-        format!(" \u{1FAD0} VerySmolCode{}  [{}] ", badges, app.model_name)
-    } else {
-        format!(" \u{1FAD0} VerySmolCode{} ", badges)
-    };
 
     let header = Block::default()
-        .title(title)
+        .title(format!(" \u{1F9E0} VerySmolCode{} ", badges))
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ACCENT_COLOR))
         .style(Style::default().bg(HEADER_BG));
 
-    let spinner = if app.is_processing {
+    let inner = header.inner(area);
+    f.render_widget(header, area);
+
+    // 3-column inner layout: [status left] [spinner center] [model right]
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(30),
+            Constraint::Percentage(40),
+            Constraint::Percentage(30),
+        ])
+        .split(inner);
+
+    // Left: agent status word
+    let status_left = if app.is_processing {
+        "\u{1FAD0} Thinking"
+    } else {
+        "\u{2728} Ready"
+    };
+    f.render_widget(
+        Paragraph::new(status_left)
+            .style(Style::default().fg(ACCENT_COLOR))
+            .alignment(Alignment::Left),
+        cols[0],
+    );
+
+    // Center: berry spinner animation when processing
+    if app.is_processing {
         let frames = [
-            "\u{2699}\u{FE0F} Working.",
-            "\u{2699}\u{FE0F} Working..",
-            "\u{2699}\u{FE0F} Working...",
-            "\u{1F527} Working....",
-            "\u{1F527} Working.....",
+            "\u{1FAD0}  thinking .",
+            "\u{1FAD0}  thinking ..",
+            "\u{1FAD0}  thinking ...",
+            "\u{1FAD0}  thinking ..",
+            "\u{1FAD0}  thinking .",
         ];
         let idx = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -99,18 +121,23 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
             .as_millis()
             / 300) as usize
             % frames.len();
-        frames[idx].to_string()
-    } else {
-        "\u{2728} Ready".to_string()
-    };
+        f.render_widget(
+            Paragraph::new(frames[idx])
+                .style(Style::default().fg(Color::Rgb(160, 200, 255)))
+                .alignment(Alignment::Center),
+            cols[1],
+        );
+    }
 
-    let inner = header.inner(area);
-    f.render_widget(header, area);
-
-    let status_text = Paragraph::new(spinner)
-        .style(Style::default().fg(ACCENT_COLOR))
-        .alignment(Alignment::Center);
-    f.render_widget(status_text, inner);
+    // Right: current model name
+    if !app.model_name.is_empty() && app.model_name != "Ready" {
+        f.render_widget(
+            Paragraph::new(app.model_name.as_str())
+                .style(Style::default().fg(Color::Rgb(140, 180, 140)))
+                .alignment(Alignment::Right),
+            cols[2],
+        );
+    }
 }
 
 fn draw_messages(f: &mut Frame, area: Rect, app: &App) {

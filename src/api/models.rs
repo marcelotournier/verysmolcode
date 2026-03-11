@@ -208,36 +208,39 @@ impl ModelRouter {
         }
     }
 
-    /// Pick the best available model for a task complexity level.
-    /// Prefers Gemini 3 models, falls back to 2.5.
+    /// Pick the best available model.
+    /// Order: 3.1 Pro → 3 Flash → 3.1 Flash-Lite → 2.5 Pro → 2.5 Flash → 2.5 Flash-Lite
+    /// prefer_smart=false (/fast mode) skips directly to Flash tier.
     /// Returns None if all models are exhausted for the day.
     pub fn pick_model(&mut self, prefer_smart: bool) -> Option<ModelId> {
+        // Full priority order: newest Pro first, then Flash, then Lite, then 2.5 fallbacks
+        let full_order = [
+            ModelId::Gemini31Pro,
+            ModelId::Gemini3Flash,
+            ModelId::Gemini31FlashLite,
+            ModelId::Gemini25Pro,
+            ModelId::Gemini25Flash,
+            ModelId::Gemini25FlashLite,
+        ];
+
         if prefer_smart {
-            // Pro tier first (3.1 Pro -> 2.5 Pro), then Flash, then Lite
-            let order = [
-                ModelId::Gemini31Pro,
-                ModelId::Gemini25Pro,
-                ModelId::Gemini3Flash,
-                ModelId::Gemini25Flash,
-                ModelId::Gemini31FlashLite,
-                ModelId::Gemini25FlashLite,
-            ];
-            for model in order {
+            // Start from Pro (full order)
+            for model in full_order {
                 if self.limiter_mut(model).can_request() {
                     return Some(model);
                 }
             }
         } else {
-            // Flash first (save Pro for hard tasks)
-            let order = [
+            // /fast mode: skip Pro, start from Flash tier
+            let fast_order = [
                 ModelId::Gemini3Flash,
-                ModelId::Gemini25Flash,
                 ModelId::Gemini31FlashLite,
+                ModelId::Gemini25Flash,
                 ModelId::Gemini25FlashLite,
                 ModelId::Gemini31Pro,
                 ModelId::Gemini25Pro,
             ];
-            for model in order {
+            for model in fast_order {
                 if self.limiter_mut(model).can_request() {
                     return Some(model);
                 }
@@ -254,30 +257,30 @@ impl ModelRouter {
         self.limiter_mut(model).wait_duration()
     }
 
-    /// Get the next fallback model after a failure
+    /// Get the next fallback model after a failure.
+    /// Follows priority order: 3.1Pro → 3Flash → 3.1FlashLite → 2.5Pro → 2.5Flash → 2.5FlashLite
     pub fn fallback_for(&mut self, model: ModelId) -> Option<ModelId> {
-        // Try same tier but different generation, then lower tiers
         let fallback_order: &[ModelId] = match model {
             ModelId::Gemini31Pro => &[
+                ModelId::Gemini3Flash,
+                ModelId::Gemini31FlashLite,
                 ModelId::Gemini25Pro,
-                ModelId::Gemini3Flash,
                 ModelId::Gemini25Flash,
-                ModelId::Gemini31FlashLite,
-                ModelId::Gemini25FlashLite,
-            ],
-            ModelId::Gemini25Pro => &[
-                ModelId::Gemini3Flash,
-                ModelId::Gemini25Flash,
-                ModelId::Gemini31FlashLite,
                 ModelId::Gemini25FlashLite,
             ],
             ModelId::Gemini3Flash => &[
-                ModelId::Gemini25Flash,
                 ModelId::Gemini31FlashLite,
+                ModelId::Gemini25Pro,
+                ModelId::Gemini25Flash,
                 ModelId::Gemini25FlashLite,
             ],
-            ModelId::Gemini25Flash => &[ModelId::Gemini31FlashLite, ModelId::Gemini25FlashLite],
-            ModelId::Gemini31FlashLite => &[ModelId::Gemini25FlashLite],
+            ModelId::Gemini31FlashLite => &[
+                ModelId::Gemini25Pro,
+                ModelId::Gemini25Flash,
+                ModelId::Gemini25FlashLite,
+            ],
+            ModelId::Gemini25Pro => &[ModelId::Gemini25Flash, ModelId::Gemini25FlashLite],
+            ModelId::Gemini25Flash => &[ModelId::Gemini25FlashLite],
             ModelId::Gemini25FlashLite => &[],
         };
 
@@ -459,6 +462,7 @@ mod tests {
     #[test]
     fn test_router_pick_fast_prefers_flash() {
         let mut router = ModelRouter::new();
+        // /fast mode skips Pro, starts at 3 Flash
         let model = router.pick_model(false);
         assert_eq!(model, Some(ModelId::Gemini3Flash));
     }
@@ -470,17 +474,17 @@ mod tests {
         for _ in 0..10 {
             router.record_request(ModelId::Gemini3Flash);
         }
-        // Should fall back to 2.5 Flash
+        // Fast mode should fall back to 3.1 Flash-Lite (next in fast order)
         let model = router.pick_model(false);
-        assert_eq!(model, Some(ModelId::Gemini25Flash));
+        assert_eq!(model, Some(ModelId::Gemini31FlashLite));
     }
 
     #[test]
     fn test_router_fallback_chain() {
         let mut router = ModelRouter::new();
-        // Fallback from 3.1 Pro should include 2.5 Pro, then Flash tiers
+        // Fallback from 3.1 Pro goes to 3 Flash (new order)
         let fb = router.fallback_for(ModelId::Gemini31Pro);
-        assert_eq!(fb, Some(ModelId::Gemini25Pro));
+        assert_eq!(fb, Some(ModelId::Gemini3Flash));
     }
 
     #[test]
@@ -493,13 +497,13 @@ mod tests {
     #[test]
     fn test_router_fallback_skips_exhausted() {
         let mut router = ModelRouter::new();
-        // Exhaust 2.5 Pro
-        for _ in 0..5 {
-            router.record_request(ModelId::Gemini25Pro);
+        // Exhaust 3 Flash
+        for _ in 0..10 {
+            router.record_request(ModelId::Gemini3Flash);
         }
-        // Fallback from 3.1 Pro should skip exhausted 2.5 Pro -> go to 3 Flash
+        // Fallback from 3.1 Pro should skip exhausted 3 Flash -> go to 3.1 Flash-Lite
         let fb = router.fallback_for(ModelId::Gemini31Pro);
-        assert_eq!(fb, Some(ModelId::Gemini3Flash));
+        assert_eq!(fb, Some(ModelId::Gemini31FlashLite));
     }
 
     #[test]

@@ -374,7 +374,7 @@ fn test_config_set_compact_threshold_clamp_low() {
 #[test]
 fn test_config_set_compact_threshold_clamp_high() {
     let msg = get_message("/config set compact_threshold 999999");
-    assert!(msg.contains("Auto-compact threshold set to 128000"));
+    assert!(msg.contains("Auto-compact threshold set to 200000"));
 }
 
 #[test]

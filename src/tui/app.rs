@@ -297,13 +297,17 @@ impl App {
         let (tg_out_tx, tg_out_rx) = mpsc::channel::<String>();
         self.telegram_out_tx = Some(tg_out_tx);
         let send_config = tg_config.clone();
+        let tg_err_tx = tg_tx.clone();
         thread::spawn(move || {
             let send_bot = match crate::telegram::bot::TelegramBot::from_config(&send_config) {
                 Some(b) => b,
                 None => return,
             };
             while let Ok(msg) = tg_out_rx.recv() {
-                let _ = send_bot.send_message(&msg);
+                if let Err(e) = send_bot.send_message(&msg) {
+                    // Report send errors back to TUI as special TELEGRAM_ERR prefix
+                    let _ = tg_err_tx.send(format!("TELEGRAM_ERR:{}", e));
+                }
             }
         });
 
@@ -841,6 +845,34 @@ impl App {
                     self.todo_summary = summary;
                     self.todo_display = display;
                 }
+                AgentEvent::ExecuteCommand(cmd) => {
+                    // Agent requested a slash command — execute it silently
+                    let response = crate::tui::commands::handle_command(&cmd);
+                    match response {
+                        CommandResponse::Compact => {
+                            if let Some(tx) = &self.agent_tx {
+                                let _ = tx.send("/_compact".to_string());
+                            }
+                        }
+                        CommandResponse::StartLoop {
+                            prompt,
+                            interval_secs,
+                            max_iterations,
+                        } => {
+                            self.loop_config = Some(LoopConfig {
+                                prompt,
+                                interval_secs,
+                                max_iterations,
+                                iterations_run: 0,
+                                next_run_at: std::time::Instant::now(),
+                            });
+                        }
+                        CommandResponse::LoopCancel => {
+                            self.loop_config = None;
+                        }
+                        _ => {} // Other commands ignored (agent shouldn't quit/clear)
+                    }
+                }
                 AgentEvent::Status(s) => {
                     if let Some(rate) = s.strip_prefix("RATE:") {
                         self.rate_status = rate.to_string();
@@ -848,8 +880,14 @@ impl App {
                         if self.telegram_enabled {
                             self.broadcast_to_telegram(format!("[warn] {}", warning));
                         }
+                        self.messages.push(DisplayMessage::Error(format!(
+                            "\u{26A0}\u{FE0F} {}",
+                            warning
+                        )));
+                        needs_scroll = true;
+                    } else if let Some(err) = s.strip_prefix("ERROR:") {
                         self.messages
-                            .push(DisplayMessage::Error(warning.to_string()));
+                            .push(DisplayMessage::Error(format!("\u{274C} {}", err)));
                         needs_scroll = true;
                     } else {
                         self.messages.push(DisplayMessage::Status(s));
@@ -871,7 +909,17 @@ impl App {
         };
 
         for msg in tg_messages {
-            // Show the Telegram message in the TUI
+            // Telegram send errors are reported back with special prefix
+            if let Some(err) = msg.strip_prefix("TELEGRAM_ERR:") {
+                self.messages.push(DisplayMessage::Error(format!(
+                    "\u{274C} Telegram error: {}",
+                    err
+                )));
+                needs_scroll = true;
+                continue;
+            }
+
+            // Show the incoming Telegram message in the TUI
             self.messages
                 .push(DisplayMessage::Status(format!("[Telegram] {}", msg)));
             needs_scroll = true;
@@ -973,12 +1021,12 @@ impl App {
     }
 
     pub fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_add(3);
+        self.scroll_offset = self.scroll_offset.saturating_add(2);
         self.dirty = true;
     }
 
     pub fn scroll_down(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(3);
+        self.scroll_offset = self.scroll_offset.saturating_sub(2);
         self.dirty = true;
     }
 
@@ -1579,15 +1627,15 @@ mod tests {
         let mut app = App::test_new();
         assert_eq!(app.scroll_offset, 0);
         app.scroll_up();
-        assert_eq!(app.scroll_offset, 3);
+        assert_eq!(app.scroll_offset, 2);
         app.scroll_up();
-        assert_eq!(app.scroll_offset, 6);
+        assert_eq!(app.scroll_offset, 4);
     }
 
     #[test]
     fn test_scroll_down() {
         let mut app = App::test_new();
-        app.scroll_offset = 5;
+        app.scroll_offset = 4;
         app.scroll_down();
         assert_eq!(app.scroll_offset, 2);
         app.scroll_down();

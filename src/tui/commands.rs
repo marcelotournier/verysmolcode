@@ -170,7 +170,7 @@ pub fn handle_command(input: &str) -> CommandResponse {
                     "compact_threshold" => val
                         .parse::<u32>()
                         .map(|v| {
-                            config.auto_compact_threshold = v.clamp(4000, 128000);
+                            config.auto_compact_threshold = v.clamp(4000, 200000);
                             format!(
                                 "Auto-compact threshold set to {}",
                                 config.auto_compact_threshold

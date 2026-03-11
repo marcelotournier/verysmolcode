@@ -45,8 +45,7 @@
 # TODO / Progress Tracker
 
 ## Bugs
-- [ ] BUG: Can't select text in the TUI screen after the scrolling fix (v0.13.0)
-- [ ] Reduce scroll speed (scroll_up/scroll_down increments too high) — fast scroll may be contributing to performance lag
+- (no known open bugs)
 
 ## Completed (v0.7.7)
 - [x] Repo setup (gitignore, license, maturin/pyo3)
@@ -378,6 +377,23 @@
 - [x] Tool results now word-wrap instead of truncating on one line
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
+
+## Completed (v0.15.0) — UX Polish & Agent Intelligence
+- [x] Text selection: removed EnableMouseCapture so OS handles mouse, enabling terminal text selection
+- [x] Header redesign: 3-column layout — left=agent status, center=🫐 berry spinner, right=model name
+- [x] Removed "Thinking..." status messages (spinner in header is the indicator)
+- [x] Suppressed model-switch status messages — model shown in header top-right silently
+- [x] Warning/error emojis: ⚠️ for warnings, ❌ for errors (Telegram errors, agent errors)
+- [x] Router order updated: 3.1 Pro → 3 Flash → 3.1 Flash-Lite → 2.5 Pro → 2.5 Flash → 2.5 Flash-Lite
+- [x] Exponential backoff when all models rate-limited: waits 2s→4s→8s→64s then retries from top
+- [x] Telegram: receive photos/documents (download + base64 + include in agent context)
+- [x] Telegram: send_document() method for sending files to chat
+- [x] Telegram send errors: reported back to TUI with ❌ emoji
+- [x] /compact auto-threshold raised to 160,000 tokens (was 24,000)
+- [x] Compact threshold clamp extended to 200,000 tokens max
+- [x] Agent slash commands: agent can emit CMD:/compact, CMD:/loop to control TUI features
+- [x] Silent critic for non-pro: NEEDS_WORK feeds back as silent fix turn (no "Reviewing..." visible)
+- [x] Scroll speed reduced 33% (3→2 lines per step)
 
 ## Completed (v0.14.0) — /loop Command (Ralph-style iterative loops)
 - [x] /loop <prompt> — run prompt after each agent completion (immediate, Ralph-style)

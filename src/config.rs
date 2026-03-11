@@ -23,7 +23,7 @@ impl Default for Config {
             max_tokens_per_response: 4096,
             max_conversation_tokens: 32000,
             temperature: 0.7,
-            auto_compact_threshold: 24000,
+            auto_compact_threshold: 160000,
             system_prompt: default_system_prompt(),
             safety_enabled: true,
             command_timeout: default_command_timeout(),
@@ -87,7 +87,15 @@ Working directory: {cwd}
   3. Call todo_update(action:"done", id:N) when a step is complete
   The user sees the todo list in their status bar. Never skip this.
 - Ask before ambiguous or destructive actions.
-- After completing all changes, give a brief summary of what was done."#,
+- After completing all changes, give a brief summary of what was done.
+
+## Slash Commands (you can execute these)
+If you need to manage context or control features, emit a command line using the format `CMD:/command`.
+Available commands you may use:
+- `CMD:/compact` — compact the conversation to free token budget when context is getting large
+- `CMD:/loop <prompt>` — start a recurring loop (e.g. CMD:/loop 5m check build status)
+- `CMD:/loop off` — cancel an active loop
+Only emit CMD: lines when genuinely needed. They are invisible to the user."#,
         cwd = cwd,
         git_context = git_context,
         timeout = super::tools::git::command_timeout_secs()
@@ -183,7 +191,7 @@ mod tests {
         assert_eq!(config.max_tokens_per_response, 4096);
         assert_eq!(config.max_conversation_tokens, 32000);
         assert_eq!(config.temperature, 0.7);
-        assert_eq!(config.auto_compact_threshold, 24000);
+        assert_eq!(config.auto_compact_threshold, 160000);
         assert!(config.safety_enabled);
         assert_eq!(config.command_timeout, 60);
     }
@@ -259,12 +267,13 @@ mod tests {
 
     #[test]
     fn test_config_load_returns_default_on_missing() {
-        // Config::load() should never fail — returns defaults when file is missing
+        // Config::load() should never fail — returns something (defaults or saved config)
         let config = Config::load();
-        // At minimum, check it has reasonable defaults
+        // At minimum, check it has non-zero token limit and threshold
         assert!(config.max_tokens_per_response > 0);
-        assert!(config.temperature > 0.0);
         assert!(config.auto_compact_threshold > 0);
+        // temperature can be 0.0 if user set it that way, just check it's in range
+        assert!(config.temperature >= 0.0 && config.temperature <= 2.0);
     }
 
     #[test]

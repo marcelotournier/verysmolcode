@@ -5,9 +5,7 @@ pub mod session;
 pub mod ui;
 
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind,
-    },
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -21,7 +19,7 @@ pub fn run() -> Result<(), String> {
     // Setup terminal
     enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {}", e))?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
+    execute!(stdout, EnterAlternateScreen)
         .map_err(|e| format!("Failed to enter alternate screen: {}", e))?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal =
@@ -49,12 +47,7 @@ pub fn run() -> Result<(), String> {
 
     // Restore terminal
     disable_raw_mode().ok();
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )
-    .ok();
+    execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
     terminal.show_cursor().ok();
 
     result
@@ -96,11 +89,6 @@ fn run_app(
                         }
                     }
                 }
-                Ok(Event::Mouse(mouse)) => match mouse.kind {
-                    MouseEventKind::ScrollUp => app.scroll_up(),
-                    MouseEventKind::ScrollDown => app.scroll_down(),
-                    _ => {}
-                },
                 Ok(Event::Resize(_, _)) => {
                     app.dirty = true;
                 }
