@@ -69,6 +69,7 @@ pub struct App {
 
     // Telegram integration
     telegram_rx: Option<mpsc::Receiver<String>>,
+    telegram_out_tx: Option<mpsc::Sender<String>>,
     pub telegram_enabled: bool,
 
     // Dirty flag: only redraw when state changes
@@ -112,6 +113,7 @@ impl App {
             todo_display: String::new(),
             auto_compact_threshold: crate::config::Config::load().auto_compact_threshold,
             telegram_rx: None,
+            telegram_out_tx: None,
             telegram_enabled: false,
             dirty: true,
         };
@@ -262,14 +264,15 @@ impl App {
         Ok(())
     }
 
-    /// Start a background thread that polls Telegram for incoming messages
+    /// Start a background thread that polls Telegram for incoming messages,
+    /// and a sender thread for broadcasting agent events to Telegram.
     fn start_telegram_polling(&mut self) {
         let tg_config = crate::telegram::config::TelegramConfig::load();
         if !tg_config.is_configured() {
             return;
         }
 
-        let mut bot = match crate::telegram::bot::TelegramBot::from_config(&tg_config) {
+        let mut poll_bot = match crate::telegram::bot::TelegramBot::from_config(&tg_config) {
             Some(b) => b,
             None => return,
         };
@@ -278,10 +281,24 @@ impl App {
         self.telegram_rx = Some(tg_rx);
         self.telegram_enabled = true;
 
+        // Outgoing: agent events -> Telegram (dedicated thread to avoid blocking TUI)
+        let (tg_out_tx, tg_out_rx) = mpsc::channel::<String>();
+        self.telegram_out_tx = Some(tg_out_tx);
+        let send_config = tg_config.clone();
+        thread::spawn(move || {
+            let send_bot = match crate::telegram::bot::TelegramBot::from_config(&send_config) {
+                Some(b) => b,
+                None => return,
+            };
+            while let Ok(msg) = tg_out_rx.recv() {
+                let _ = send_bot.send_message(&msg);
+            }
+        });
+
         thread::spawn(move || {
             loop {
                 // Long poll with 10s timeout (Telegram server holds connection)
-                match bot.get_updates(10) {
+                match poll_bot.get_updates(10) {
                     Ok(messages) => {
                         for msg in messages {
                             if tg_tx.send(msg).is_err() {
@@ -296,6 +313,14 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Send a message to Telegram asynchronously (non-blocking).
+    /// Only sends if Telegram is configured and enabled.
+    fn broadcast_to_telegram(&self, msg: String) {
+        if let Some(tx) = &self.telegram_out_tx {
+            let _ = tx.send(msg);
+        }
     }
 
     pub fn submit_input(&mut self) {
@@ -646,6 +671,16 @@ impl App {
         for event in events {
             match event {
                 AgentEvent::Text(text) => {
+                    // Broadcast AI responses to Telegram (truncate to avoid spam)
+                    if self.telegram_enabled {
+                        let tg_text = if text.chars().count() > 2000 {
+                            let t: String = text.chars().take(1997).collect();
+                            format!("{t}...")
+                        } else {
+                            text.clone()
+                        };
+                        self.broadcast_to_telegram(tg_text);
+                    }
                     self.messages.push(DisplayMessage::Assistant(text));
                     needs_scroll = true;
                 }
@@ -679,6 +714,10 @@ impl App {
                     } else {
                         args.to_string()
                     };
+                    // Broadcast tool name only (not full args) to avoid flooding
+                    if self.telegram_enabled {
+                        self.broadcast_to_telegram(format!("[tool] {}", name));
+                    }
                     self.messages
                         .push(DisplayMessage::ToolCall(format!("{}({})", name, args_str)));
                     needs_scroll = true;
@@ -726,6 +765,9 @@ impl App {
                     if let Some(rate) = s.strip_prefix("RATE:") {
                         self.rate_status = rate.to_string();
                     } else if let Some(warning) = s.strip_prefix("WARN:") {
+                        if self.telegram_enabled {
+                            self.broadcast_to_telegram(format!("[warn] {}", warning));
+                        }
                         self.messages
                             .push(DisplayMessage::Error(warning.to_string()));
                         needs_scroll = true;
@@ -1380,6 +1422,7 @@ impl App {
             todo_display: String::new(),
             auto_compact_threshold: 24000,
             telegram_rx: None,
+            telegram_out_tx: None,
             telegram_enabled: false,
             dirty: true,
         }
