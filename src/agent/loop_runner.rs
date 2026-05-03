@@ -949,25 +949,20 @@ impl AgentLoop {
         for msg in &self.conversation[dropped_start..dropped_end] {
             for part in &msg.parts {
                 match part {
-                    Part::Text { text } => {
-                        if topics.len() < 5 {
-                            let first_line = text.lines().next().unwrap_or("").trim();
-                            if !first_line.is_empty() && first_line.len() > 5 {
-                                let topic = safe_truncate(first_line, 80);
-                                topics.push(topic.to_string());
-                            }
+                    Part::Text { text } if topics.len() < 5 => {
+                        let first_line = text.lines().next().unwrap_or("").trim();
+                        if !first_line.is_empty() && first_line.len() > 5 {
+                            let topic = safe_truncate(first_line, 80);
+                            topics.push(topic.to_string());
                         }
                     }
-                    Part::FunctionCall { function_call } => {
+                    Part::FunctionCall { function_call } if files_touched.len() < 15 => {
                         // Track files that were read/written/edited
-                        if files_touched.len() < 15 {
-                            if let Some(path) =
-                                function_call.args.get("path").and_then(|v| v.as_str())
-                            {
-                                let short = path.strip_prefix("./").unwrap_or(path);
-                                if !files_touched.contains(&short.to_string()) {
-                                    files_touched.push(short.to_string());
-                                }
+                        if let Some(path) = function_call.args.get("path").and_then(|v| v.as_str())
+                        {
+                            let short = path.strip_prefix("./").unwrap_or(path);
+                            if !files_touched.contains(&short.to_string()) {
+                                files_touched.push(short.to_string());
                             }
                         }
                     }

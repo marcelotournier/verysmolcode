@@ -214,10 +214,8 @@ fn run_prompt_mode(prompt: &str) {
                     eprintln!("{}", colors.green(&format!("\u{2705} {}", name)));
                 }
             }
-            AgentEvent::Status(s) => {
-                if !s.starts_with("RATE:") && !s.starts_with("WARN:") {
-                    eprintln!("{}", colors.dim(&format!("\u{1F4AC} {}", s)));
-                }
+            AgentEvent::Status(s) if !s.starts_with("RATE:") && !s.starts_with("WARN:") => {
+                eprintln!("{}", colors.dim(&format!("\u{1F4AC} {}", s)));
             }
             AgentEvent::ModelSwitch(m) => {
                 eprintln!("{}", colors.yellow(&format!("\u{2699}\u{FE0F}  {}", m)));

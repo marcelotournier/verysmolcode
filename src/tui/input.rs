@@ -126,10 +126,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     'l' => {
                         app.clear_screen();
                     }
-                    'd' => {
-                        if app.input.is_empty() {
-                            app.should_quit = true;
-                        }
+                    'd' if app.input.is_empty() => {
+                        app.should_quit = true;
                     }
                     'r' => {
                         app.search_mode = true;
@@ -154,30 +152,22 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 app.update_suggestions();
             }
         }
-        KeyCode::Backspace => {
-            if app.cursor_pos > 0 {
-                let prev = prev_char_boundary(&app.input, app.cursor_pos);
-                app.input.drain(prev..app.cursor_pos);
-                app.cursor_pos = prev;
-                app.update_suggestions();
-            }
+        KeyCode::Backspace if app.cursor_pos > 0 => {
+            let prev = prev_char_boundary(&app.input, app.cursor_pos);
+            app.input.drain(prev..app.cursor_pos);
+            app.cursor_pos = prev;
+            app.update_suggestions();
         }
-        KeyCode::Delete => {
-            if app.cursor_pos < app.input.len() {
-                let next = next_char_boundary(&app.input, app.cursor_pos);
-                app.input.drain(app.cursor_pos..next);
-                app.update_suggestions();
-            }
+        KeyCode::Delete if app.cursor_pos < app.input.len() => {
+            let next = next_char_boundary(&app.input, app.cursor_pos);
+            app.input.drain(app.cursor_pos..next);
+            app.update_suggestions();
         }
-        KeyCode::Left => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = prev_char_boundary(&app.input, app.cursor_pos);
-            }
+        KeyCode::Left if app.cursor_pos > 0 => {
+            app.cursor_pos = prev_char_boundary(&app.input, app.cursor_pos);
         }
-        KeyCode::Right => {
-            if app.cursor_pos < app.input.len() {
-                app.cursor_pos = next_char_boundary(&app.input, app.cursor_pos);
-            }
+        KeyCode::Right if app.cursor_pos < app.input.len() => {
+            app.cursor_pos = next_char_boundary(&app.input, app.cursor_pos);
         }
         KeyCode::Home => {
             app.cursor_pos = 0;
