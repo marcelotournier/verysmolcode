@@ -6,8 +6,7 @@ pub mod ui;
 
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers,
-        MouseEventKind,
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind,
     },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -97,19 +96,17 @@ fn run_app(
                         }
                     }
                 }
-                Ok(Event::Mouse(mouse)) => {
-                    match mouse.kind {
-                        MouseEventKind::ScrollUp => {
-                            app.scroll_up();
-                            app.dirty = true;
-                        }
-                        MouseEventKind::ScrollDown => {
-                            app.scroll_down();
-                            app.dirty = true;
-                        }
-                        _ => {}
+                Ok(Event::Mouse(mouse)) => match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        app.scroll_up();
+                        app.dirty = true;
                     }
-                }
+                    MouseEventKind::ScrollDown => {
+                        app.scroll_down();
+                        app.dirty = true;
+                    }
+                    _ => {}
+                },
                 Ok(Event::Resize(_, _)) => {
                     app.dirty = true;
                 }

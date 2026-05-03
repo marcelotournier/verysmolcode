@@ -80,7 +80,10 @@ pub fn read(args: &Value) -> Value {
     let (selected_text, user_limited_lines) = match limit {
         Some(l) => {
             let end = (start_line + l).min(total_file_lines);
-            (all_lines[start_line..end].join("\n"), Some(end - start_line))
+            (
+                all_lines[start_line..end].join("\n"),
+                Some(end - start_line),
+            )
         }
         None => (all_lines[start_line..].join("\n"), None),
     };
@@ -223,7 +226,10 @@ mod tests {
     #[test]
     fn test_read_truncates_long_file() {
         let p = tmp_path("long.txt");
-        let body = (0..3000).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+        let body = (0..3000)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write(&p, &body).unwrap();
         let r = read(&json!({"path": p.to_str().unwrap()}));
         let content = r["content"].as_str().unwrap();

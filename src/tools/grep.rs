@@ -4,6 +4,7 @@
 //! deployable on RPi3 with no extra binary fetches, we keep the in-process
 //! parallel walker but expose pi's option surface:
 //! - `pattern`, `path`, `glob`, `ignore_case`, `literal`, `context`, `limit`
+//!
 //! Output format mirrors pi's: `path:line: text`, with optional `-N-` context
 //! lines. Long lines (> 500 chars) are truncated to keep results readable.
 
@@ -224,7 +225,10 @@ fn walk_collect(dir: &Path, glob: Option<&str>, out: &mut Vec<PathBuf>) {
             walk_collect(&path, glob, out);
         } else if path.is_file() {
             if let Some(g) = glob {
-                let target = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let target = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 if !glob_match(g, &target) {
                     continue;
                 }
@@ -332,7 +336,10 @@ mod tests {
     #[test]
     fn test_grep_limit() {
         let d = tmp("limit");
-        let body = (0..50).map(|i| format!("hello {}", i)).collect::<Vec<_>>().join("\n");
+        let body = (0..50)
+            .map(|i| format!("hello {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write(d.join("many.txt"), body).unwrap();
         let r = grep(&json!({"pattern": "hello", "path": d.to_str().unwrap(), "limit": 5}));
         let m = r["matches"].as_array().unwrap();

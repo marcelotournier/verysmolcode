@@ -4,6 +4,7 @@
 //! want it to consult VSC's own help instead of guessing. This tool returns:
 //!   1. The output of `vsc -h` (if the binary is on PATH or in target/),
 //!   2. A pointer to the project README and GitHub repo for deeper docs.
+//!
 //! That mirrors how pi's prompt directs the agent to read pi's README/docs/
 //! examples before improvising.
 

@@ -11,9 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::tools::path_utils::resolve_to_cwd;
-use crate::tools::truncate::{
-    format_size, truncate_head, TruncationOptions, DEFAULT_MAX_BYTES,
-};
+use crate::tools::truncate::{format_size, truncate_head, TruncationOptions, DEFAULT_MAX_BYTES};
 
 const DEFAULT_LIMIT: usize = 1000;
 

@@ -145,7 +145,10 @@ mod tests {
     #[test]
     fn test_resolve_to_cwd_relative() {
         let cwd = PathBuf::from("/tmp");
-        assert_eq!(resolve_to_cwd("foo.txt", &cwd), PathBuf::from("/tmp/foo.txt"));
+        assert_eq!(
+            resolve_to_cwd("foo.txt", &cwd),
+            PathBuf::from("/tmp/foo.txt")
+        );
     }
 
     #[test]

@@ -70,7 +70,9 @@ fn main() {
         println!("VerySmolCode v{}", env!("CARGO_PKG_VERSION"));
         println!("A lightweight Rust TUI coding agent powered by the Gemini API free tier.");
         println!("Tool surface mirrors pi-mono/coding-agent (read/write/edit/ls/grep/find/bash)");
-        println!("plus VSC extensions: git_*, web_fetch, todo_update, send_telegram, task, vsc_help.");
+        println!(
+            "plus VSC extensions: git_*, web_fetch, todo_update, send_telegram, task, vsc_help."
+        );
         println!();
         println!("Usage:");
         println!("  vsc              Launch interactive TUI");
@@ -82,7 +84,9 @@ fn main() {
         println!("Models (auto-routed on the same Gemini API key):");
         println!("  Pro tier:        Gemini 3.1 Pro, Gemini 2.5 Pro       (5/min, 25/day each)");
         println!("  Flash tier:      Gemini 3 Flash, Gemini 2.5 Flash     (10/min, 250/day each)");
-        println!("  Lite tier:       Gemini 3.1 Flash-Lite, 2.5 Flash-Lite (15/min, 1000/day each)");
+        println!(
+            "  Lite tier:       Gemini 3.1 Flash-Lite, 2.5 Flash-Lite (15/min, 1000/day each)"
+        );
         println!("  Total daily budget: ~2550 requests across all six models.");
         println!();
         println!("Key slash commands inside the TUI:");

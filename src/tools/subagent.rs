@@ -90,7 +90,11 @@ pub fn task(args: &Value) -> Value {
         while end > 0 && !answer.is_char_boundary(end) {
             end -= 1;
         }
-        format!("{}...[subagent answer truncated at {} chars]", &answer[..end], answer.len())
+        format!(
+            "{}...[subagent answer truncated at {} chars]",
+            &answer[..end],
+            answer.len()
+        )
     } else {
         answer
     };

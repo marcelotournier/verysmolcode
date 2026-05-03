@@ -15,7 +15,9 @@ use std::time::Duration;
 
 // Re-exported so existing callers (config bootstrap, /config command) keep
 // working after the run_shell move.
-pub use crate::tools::bash::{command_timeout_secs as _command_timeout_secs, set_command_timeout_secs};
+pub use crate::tools::bash::{
+    command_timeout_secs as _command_timeout_secs, set_command_timeout_secs,
+};
 
 /// Re-export under the original name for `config.rs` and other callers.
 pub fn command_timeout_secs() -> u64 {
@@ -66,9 +68,8 @@ fn run_git(args: &[&str]) -> Value {
         .spawn();
     match child {
         Ok(child) => {
-            let timeout = Duration::from_secs(
-                crate::tools::bash::command_timeout_secs().clamp(5, 600),
-            );
+            let timeout =
+                Duration::from_secs(crate::tools::bash::command_timeout_secs().clamp(5, 600));
             // Atomic load avoids extra mut borrow.
             let _ = Ordering::Relaxed;
             match run_command_with_timeout(child, timeout) {

@@ -95,9 +95,7 @@ pub fn edit(args: &Value) -> Value {
     with_file_mutation_queue(&absolute, || {
         let raw = match fs::read_to_string(&absolute) {
             Ok(s) => s,
-            Err(e) => {
-                return json!({"error": format!("Could not edit file: {}. {}", path, e)})
-            }
+            Err(e) => return json!({"error": format!("Could not edit file: {}. {}", path, e)}),
         };
 
         let (bom, content_no_bom) = strip_bom(&raw);
@@ -151,7 +149,11 @@ pub fn edit(args: &Value) -> Value {
             }
         };
 
-        let final_content = format!("{}{}", bom, restore_line_endings(&new_content, original_ending));
+        let final_content = format!(
+            "{}{}",
+            bom,
+            restore_line_endings(&new_content, original_ending)
+        );
         if let Err(e) = fs::write(&absolute, &final_content) {
             return json!({"error": format!("Failed to write: {}", e)});
         }

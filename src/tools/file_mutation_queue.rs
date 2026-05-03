@@ -29,7 +29,9 @@ fn key_for(path: &Path) -> PathBuf {
 fn lock_for(path: &Path) -> Arc<Mutex<()>> {
     let key = key_for(path);
     let mut map = registry().lock().expect("file-mutation registry poisoned");
-    map.entry(key).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+    map.entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
 }
 
 /// Run `f` while holding the mutation lock for the given file path.

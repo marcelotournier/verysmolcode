@@ -10,9 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::tools::path_utils::resolve_to_cwd;
-use crate::tools::truncate::{
-    format_size, truncate_head, TruncationOptions, DEFAULT_MAX_BYTES,
-};
+use crate::tools::truncate::{format_size, truncate_head, TruncationOptions, DEFAULT_MAX_BYTES};
 
 const DEFAULT_LIMIT: usize = 500;
 
@@ -39,11 +37,9 @@ pub fn ls(args: &Value) -> Value {
             .flatten()
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect(),
-        Err(e) => {
-            return json!({"error": format!("Cannot read directory: {}", e)})
-        }
+        Err(e) => return json!({"error": format!("Cannot read directory: {}", e)}),
     };
-    entries.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    entries.sort_by_key(|a| a.to_lowercase());
 
     let mut entry_limit_reached = false;
     let mut results: Vec<String> = Vec::new();

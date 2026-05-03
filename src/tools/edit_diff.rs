@@ -346,12 +346,7 @@ pub fn generate_diff_string(old_content: &str, new_content: &str, context_lines:
                     if same_len <= context_lines * 2 {
                         for k in 0..same_len {
                             if let Op::Same(s) = &ops[idx + k] {
-                                let l = format!(
-                                    " {:>w$} {}",
-                                    old_line_num,
-                                    s,
-                                    w = line_num_width
-                                );
+                                let l = format!(" {:>w$} {}", old_line_num, s, w = line_num_width);
                                 let _ = line;
                                 out.push(l);
                                 old_line_num += 1;
@@ -361,12 +356,7 @@ pub fn generate_diff_string(old_content: &str, new_content: &str, context_lines:
                     } else {
                         for k in 0..context_lines {
                             if let Op::Same(s) = &ops[idx + k] {
-                                let l = format!(
-                                    " {:>w$} {}",
-                                    old_line_num,
-                                    s,
-                                    w = line_num_width
-                                );
+                                let l = format!(" {:>w$} {}", old_line_num, s, w = line_num_width);
                                 out.push(l);
                                 old_line_num += 1;
                                 new_line_num += 1;
@@ -378,12 +368,7 @@ pub fn generate_diff_string(old_content: &str, new_content: &str, context_lines:
                         new_line_num += skipped;
                         for k in (same_len - context_lines)..same_len {
                             if let Op::Same(s) = &ops[idx + k] {
-                                let l = format!(
-                                    " {:>w$} {}",
-                                    old_line_num,
-                                    s,
-                                    w = line_num_width
-                                );
+                                let l = format!(" {:>w$} {}", old_line_num, s, w = line_num_width);
                                 out.push(l);
                                 old_line_num += 1;
                                 new_line_num += 1;
@@ -394,12 +379,7 @@ pub fn generate_diff_string(old_content: &str, new_content: &str, context_lines:
                     let shown = same_len.min(context_lines);
                     for k in 0..shown {
                         if let Op::Same(s) = &ops[idx + k] {
-                            let l = format!(
-                                " {:>w$} {}",
-                                old_line_num,
-                                s,
-                                w = line_num_width
-                            );
+                            let l = format!(" {:>w$} {}", old_line_num, s, w = line_num_width);
                             out.push(l);
                             old_line_num += 1;
                             new_line_num += 1;
@@ -421,12 +401,7 @@ pub fn generate_diff_string(old_content: &str, new_content: &str, context_lines:
                     }
                     for k in (same_len - shown)..same_len {
                         if let Op::Same(s) = &ops[idx + k] {
-                            let l = format!(
-                                " {:>w$} {}",
-                                old_line_num,
-                                s,
-                                w = line_num_width
-                            );
+                            let l = format!(" {:>w$} {}", old_line_num, s, w = line_num_width);
                             out.push(l);
                             old_line_num += 1;
                             new_line_num += 1;
@@ -440,13 +415,23 @@ pub fn generate_diff_string(old_content: &str, new_content: &str, context_lines:
                 idx = end;
             }
             Op::Add(line) => {
-                out.push(format!("+{:>w$} {}", new_line_num, line, w = line_num_width));
+                out.push(format!(
+                    "+{:>w$} {}",
+                    new_line_num,
+                    line,
+                    w = line_num_width
+                ));
                 new_line_num += 1;
                 last_was_change = true;
                 idx += 1;
             }
             Op::Del(line) => {
-                out.push(format!("-{:>w$} {}", old_line_num, line, w = line_num_width));
+                out.push(format!(
+                    "-{:>w$} {}",
+                    old_line_num,
+                    line,
+                    w = line_num_width
+                ));
                 old_line_num += 1;
                 last_was_change = true;
                 idx += 1;
