@@ -1,15 +1,18 @@
 # VerySmolCode
 
-A lightweight TUI coding assistant powered by Gemini API free tier, designed for resource-constrained devices like Raspberry Pi 3.
+A lightweight Rust TUI coding agent powered by the Gemini API free tier. Designed for resource-constrained devices like Raspberry Pi 3, with a tool surface ported from [pi-mono/coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent).
 
 ## Features
 
+- **Pi-Style Tool Surface**: Seven canonical coding tools (`read`, `write`, `edit`, `ls`, `grep`, `find`, `bash`) with the same semantics pi exposes — multi-edit per call, fuzzy match (smart quotes / unicode dashes / trailing whitespace), per-file mutation queue, two-limit truncation (2000 lines / 50KB), tail-truncation for bash output. Legacy VSC tool names (`read_file`, `write_file`, `edit_file`, …) remain valid as aliases for backward compatibility.
+- **Subagents (Pi-Style `task` Tool)**: Spawn an isolated agent for a focused subtask. Subagent has its own conversation context (saves parent tokens) and returns a single condensed answer. Defaults to read-only + Fast model; cannot recursively spawn more subagents.
+- **Self-Knowledge (`vsc_help` Tool)**: The agent can consult its own `vsc -h` output and project README before guessing about VSC features.
+- **Multi-Model on a Single API Key**: 6 Gemini models routed automatically — `3.1 Pro → 3 Flash → 3.1 Flash-Lite → 2.5 Pro → 2.5 Flash → 2.5 Flash-Lite`. Exponential backoff when all models are rate-limited, then retries from the top. Each model has independent per-minute / per-day budgets (~2,550 requests/day total).
 - **CLI Prompt Mode**: `vsc -p "prompt"` for single-shot usage (like `claude -p`), supports piped input
 - **Command Autocomplete**: Type `/` to see all available commands with descriptions, navigate with arrow keys
-- **Smart Model Routing**: 6 models across Gemini 3.x and 2.5 — priority order: `3.1 Pro → 3 Flash → 3.1 Flash-Lite → 2.5 Pro → 2.5 Flash → 2.5 Flash-Lite`. Exponential backoff when all models are rate-limited, then retries from top
 - **Planning Mode**: `/plan` for thorough analysis — reads code, creates architecture plans, and builds a todo list to guide implementation
 - **Task Tracking**: Built-in todo list (like Claude Code) — the agent creates and tracks tasks during complex work, visible with `/todo`
-- **Full Tool Suite**: File read/write/edit, grep search, find files, git operations, shell commands, web fetch, image reading (19 tools)
+- **Full Tool Suite**: 7 pi-style coding tools + 9 git tools + web_fetch + read_image + todo_update + send_telegram + task + vsc_help
 - **MCP Support**: Connect to MCP servers (context7, playwright, etc.) via `/mcp-add` — tools are live in the agent loop
 - **Code Reviewer**: After file changes, a silent critic reviews the `git diff`. For non-Pro models, `NEEDS_WORK` triggers an automatic silent fix turn (user never sees the review). For Pro, review is shown.
 - **Agent Slash Commands**: The agent can emit `CMD:/compact` or `CMD:/loop 5m prompt` to control TUI features
@@ -237,27 +240,70 @@ VerySmolCode loads instruction files automatically at startup:
 
 Use `/agents` to see which files are loaded.
 
+## Pi Parity
+
+The seven core coding tools (`read`, `write`, `edit`, `ls`, `grep`, `find`,
+`bash`) are a Rust port of [pi-mono/coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)'s
+TypeScript implementation. Same option surface, same truncation discipline,
+same edit semantics:
+
+| Pi feature | VSC equivalent |
+|---|---|
+| `read(path, offset?, limit?)` with 2000-line / 50KB limit + continuation hint | `tools::read` |
+| `write(path, content)` with auto-mkdir + per-file mutation queue | `tools::write` (5MB cap to protect RPi3 disk) |
+| `edit(path, edits[{oldText,newText}])` with fuzzy match + multi-edit + overlap detection | `tools::edit` (also accepts legacy `old_string/new_string/replace_all`) |
+| `ls(path, limit)` alphabetical, `/` suffix on dirs | `tools::ls` |
+| `grep(pattern, path, glob, ignore_case, context, limit)` with 100 default | `tools::grep` (in-process literal match — no ripgrep dep, fits RPi3) |
+| `find(pattern, path, limit)` glob-based, 1000 default | `tools::find` (in-process `*`/`**`/`?` matcher — no `fd` dep) |
+| `bash(command, timeout)` with tail-truncated output | `tools::bash` (default 60s timeout, configurable 5–600) |
+| File mutation queue serializing same-path writes | `tools::file_mutation_queue` |
+| Edit fuzzy match (NFKC, smart quotes/dashes, NBSP normalization) | `tools::edit_diff` |
+| Subagents | `tools::subagent` (`task` tool — read-only by default, Fast model) |
+| System prompt with tool snippets + project instructions | `config.rs::default_system_prompt()` |
+
+Things VSC keeps as extensions on top of pi (not in pi itself):
+- `git_*` first-class git tools (compact structured output saves tokens)
+- `web_fetch` plain-text URL fetching
+- `read_image` returning Gemini `inline_data` parts (vision support)
+- `todo_update` shared task list visible in the TUI status bar
+- `send_telegram` for asking the user a question or reporting completion
+- `task` subagent + `vsc_help` self-knowledge tool
+- `/loop` Ralph-style iterative loops + `/telegram` two-way bridge
+- 6-model Gemini router with per-model RPM/RPD tracking
+
 ## Architecture
 
 ```
 src/
   main.rs           - Entry point
-  config.rs         - Configuration management
+  config.rs         - Configuration + system prompt
   utils.rs          - Shared utilities (safe UTF-8 truncation)
   api/
     client.rs       - Gemini REST API client with fallback
     models.rs       - 6 model definitions, rate limiting, routing
     types.rs        - Request/response type definitions
   agent/
-    loop_runner.rs  - Main agent loop with planning mode and silent critic
-  tools/
-    file_ops.rs     - File read/write/edit/list + image reading
-    grep.rs         - Search and find files
-    git.rs          - Git operations and shell commands
-    web.rs          - Web page fetching
-    todo.rs         - Task tracking (agent todo list)
-    registry.rs     - Tool registration and dispatch (19 tools)
+    loop_runner.rs  - Main agent loop, planning mode, silent critic, subagent mode
+  tools/                                # Pi-style canonical tools
+    truncate.rs     - Two-limit truncation (lines + bytes), head/tail variants
+    path_utils.rs   - ~ expansion, NBSP/curly-quote macOS variants
+    file_mutation_queue.rs - Per-canonical-path mutex registry
+    edit_diff.rs    - BOM/CRLF, NFKC fuzzy match, multi-edit application, diff
+    read.rs         - read tool (offset/limit, image inline)
+    write.rs        - write tool (mutation queue + safe path)
+    edit.rs         - edit tool (multi-edit + legacy shape)
+    ls.rs           - ls tool
+    grep.rs         - grep tool (literal substring + glob/context/CI)
+    find.rs         - find tool (in-process * / ** / ? glob)
+    bash.rs         - bash tool (tail-truncate, configurable timeout)
+    subagent.rs     - task tool (isolated AgentLoop spawn)
+    self_help.rs    - vsc_help tool
+    file_ops.rs     - Shared safe-path helpers
+    git.rs          - VSC extension: git_* tools
+    web.rs          - VSC extension: web_fetch
+    todo.rs         - VSC extension: todo_update
     undo.rs         - Undo history for file mutations
+    registry.rs     - Tool registration + canonical/legacy name dispatch
   mcp/
     client.rs       - MCP client (stdio JSON-RPC 2.0)
     config.rs       - MCP server configuration
@@ -276,7 +322,7 @@ src/
 ## Testing
 
 ```bash
-# Unit tests (495+ tests)
+# Unit tests (~507 tests)
 cargo test
 
 # Integration test (requires tmux + GEMINI_API_KEY)

@@ -68,7 +68,9 @@ fn main() {
     // Handle --help
     if args.len() >= 2 && (args[1] == "--help" || args[1] == "-h") {
         println!("VerySmolCode v{}", env!("CARGO_PKG_VERSION"));
-        println!("A lightweight TUI coding assistant powered by Gemini API free tier.");
+        println!("A lightweight Rust TUI coding agent powered by the Gemini API free tier.");
+        println!("Tool surface mirrors pi-mono/coding-agent (read/write/edit/ls/grep/find/bash)");
+        println!("plus VSC extensions: git_*, web_fetch, todo_update, send_telegram, task, vsc_help.");
         println!();
         println!("Usage:");
         println!("  vsc              Launch interactive TUI");
@@ -76,6 +78,21 @@ fn main() {
         println!("  echo \"..\" | vsc -p  Pipe input as prompt");
         println!("  vsc -v           Show version");
         println!("  vsc -h           Show this help");
+        println!();
+        println!("Models (auto-routed on the same Gemini API key):");
+        println!("  Pro tier:        Gemini 3.1 Pro, Gemini 2.5 Pro       (5/min, 25/day each)");
+        println!("  Flash tier:      Gemini 3 Flash, Gemini 2.5 Flash     (10/min, 250/day each)");
+        println!("  Lite tier:       Gemini 3.1 Flash-Lite, 2.5 Flash-Lite (15/min, 1000/day each)");
+        println!("  Total daily budget: ~2550 requests across all six models.");
+        println!();
+        println!("Key slash commands inside the TUI:");
+        println!("  /help, /tokens, /status, /undo, /save, /resume, /new, /diff");
+        println!("  /loop [interval] <prompt> | /loop off");
+        println!("  /telegram setup | /telegram-test | /telegram-off");
+        println!("  /mcp | /mcp-add | /mcp-rm");
+        println!("  /fast (/f), /smart (/s), /plan, /search, /compact, /config set <k> <v>");
+        println!();
+        println!("Source & deeper docs: https://github.com/marcelotournier/verysmolcode");
         return;
     }
 

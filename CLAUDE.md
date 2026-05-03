@@ -378,6 +378,42 @@
 - [x] /copy (/cp) command copies last AI response to clipboard
 - [x] [WEB] badge in header when search grounding is active
 
+## Completed (v0.16.0) — Pi-Mono Tool Surface Port + Subagents
+- [x] Ported pi-mono/coding-agent's seven canonical coding tools to Rust:
+  `read`, `write`, `edit`, `ls`, `grep`, `find`, `bash`. Same semantics as pi:
+  two-limit truncation (2000 lines / 50KB), head for read, tail for bash;
+  multi-edit with `edits:[{oldText,newText}]`; NFKC fuzzy match (smart
+  quotes / unicode dashes / NBSP / trailing-whitespace); per-file mutation
+  queue (canonical-path `Mutex<HashMap>` registry); CRLF detection +
+  restoration around LF-normalized matching; BOM strip; overlap detection.
+- [x] Legacy VSC tool names (`read_file`, `write_file`, `edit_file`,
+  `list_directory`, `grep_search`, `find_files`, `run_command`, `read_image`)
+  remain valid as registry aliases — sessions and TUI summarizers keep working.
+- [x] `task` subagent tool — spawns an isolated `AgentLoop` with a tool
+  allow-list. Defaults: `read_only:true`, Fast model (preserves parent's Pro
+  budget). Cannot recursively spawn subagents (no `task` in subagent toolset).
+- [x] `vsc_help` self-knowledge tool — runs `vsc -h`, points at README/GitHub.
+  System prompt explicitly tells the model to consult this BEFORE guessing.
+- [x] `vsc -h` rewritten as a richer overview (tools, model tiers, slash
+  commands, repo URL) so `vsc_help` returns useful content.
+- [x] System prompt rewritten pi-style: lists each tool with one-line snippet,
+  documents pi-style names, mentions multi-model routing, keeps VSC slash
+  command surface (`CMD:/compact`, `CMD:/loop`).
+- [x] AgentLoop: `set_subagent_mode(allowed)` filters tool surface and excludes
+  `task` itself. `is_dangerous_tool_call` extended to cover `bash`/`write`/`edit`.
+  Inline-image branch handles both `read_image` and `read` (since pi-style
+  `read` returns `inline_data` for image extensions).
+- [x] `bash` tool extracted from `git.rs` into its own module. Same blocked-
+  pattern list, same configurable 5–600s timeout. `git.rs` now focused only
+  on git_* tools (re-exports `command_timeout_secs` for back-compat).
+- [x] Modules: `truncate.rs`, `path_utils.rs`, `file_mutation_queue.rs`,
+  `edit_diff.rs`, `read.rs`, `write.rs`, `edit.rs`, `ls.rs`, `find.rs`,
+  `grep.rs` (rewritten), `bash.rs`, `subagent.rs`, `self_help.rs`.
+- [x] Live tmux smoke test verified: `find/ls/grep` chain works end-to-end,
+  `vsc_help` returns CLI usage, `task` spawns a 2.8s read-only subagent that
+  uses `ls` and returns the right answer.
+- [x] 507 unit tests across the existing + new modules.
+
 ## Completed (v0.15.0) — UX Polish & Agent Intelligence
 - [x] Text selection: removed EnableMouseCapture so OS handles mouse, enabling terminal text selection
 - [x] Header redesign: 3-column layout — left=agent status, center=🫐 berry spinner, right=model name
@@ -654,3 +690,28 @@ Long-term goals for ecosystem integration.
 ## RPi3
 - 906MB RAM, 4-core Cortex-A53. Native build works, ~30 min with -j1.
 - pip install gets binary wheel (1.3MB), no compilation needed.
+
+## Pi Port Decisions (v0.16.0)
+- **Why port pi at all**: Pi's tool semantics are well-tested across many
+  models (Anthropic/OpenAI/Gemini/etc.) and codebases. Adopting them gives
+  vsc immediate compatibility with model expectations from training data
+  (models call `read`/`write`/`edit` more naturally than `read_file`/etc).
+- **What we kept from pi**: option surfaces, truncation rules (2000 lines /
+  50KB), multi-edit, fuzzy match, mutation queue, BOM/CRLF discipline,
+  continuation hints, subagent concept, self-knowledge prompt pattern.
+- **What we changed**: no ripgrep / fd shell-out (would need binary fetches
+  on RPi3) — kept the rayon in-process walker and added pi's option surface
+  on top. Bash keeps a default timeout (60s, configurable) instead of pi's
+  no-default — RPi3 sessions can't risk a runaway process. Write keeps the
+  5MB cap to protect constrained disks.
+- **Backward compat strategy**: registry dispatches both pi-style canonical
+  names (`read`, `write`, `edit`, `bash`, …) AND legacy VSC names (`read_file`,
+  …) to the same implementations. TUI summarizer + saved sessions keep working.
+- **Subagent design**: spawns a fresh AgentLoop in-process, captures only the
+  text events into a string, returns a single condensed answer. Fresh loop =
+  fresh router state, but shares the same Gemini API key (so per-key rate
+  limits eventually catch up). Cannot recursively spawn subagents.
+- **Test push remote**: SSH key auth fails because the active SSH key
+  (`marcelo-find-ai`) doesn't have write access to `marcelotournier/verysmolcode`.
+  Push using `git remote set-url origin "https://x-access-token:$(gh auth token --user marcelotournier)@github.com/marcelotournier/verysmolcode.git"`
+  — the gh CLI has the right token for that account.
