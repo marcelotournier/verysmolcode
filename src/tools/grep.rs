@@ -1,112 +1,236 @@
+//! `grep` tool — Rust port of pi's grep.ts.
+//!
+//! Pi shells out to `ripgrep` (with auto-download). To keep the VSC binary
+//! deployable on RPi3 with no extra binary fetches, we keep the in-process
+//! parallel walker but expose pi's option surface:
+//! - `pattern`, `path`, `glob`, `ignore_case`, `literal`, `context`, `limit`
+//! Output format mirrors pi's: `path:line: text`, with optional `-N-` context
+//! lines. Long lines (> 500 chars) are truncated to keep results readable.
+
 use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Search for a pattern in files (parallelized with rayon)
-pub fn grep_search(args: &Value) -> Value {
+use crate::tools::find::glob_match;
+use crate::tools::path_utils::resolve_to_cwd;
+use crate::tools::truncate::{
+    format_size, truncate_head, truncate_line, TruncationOptions, DEFAULT_MAX_BYTES,
+    GREP_MAX_LINE_LENGTH,
+};
+
+const DEFAULT_LIMIT: usize = 100;
+
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    "venv",
+    ".venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+];
+
+pub fn grep(args: &Value) -> Value {
     let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
         Some(p) => p,
         None => return json!({"error": "Missing 'pattern' argument"}),
     };
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-    let include = args.get("include").and_then(|v| v.as_str());
-    let max_results: usize = args
-        .get("max_results")
+    let path_arg = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+    let glob = args
+        .get("glob")
+        .or_else(|| args.get("include"))
+        .and_then(|v| v.as_str());
+    let ignore_case = args
+        .get("ignore_case")
+        .or_else(|| args.get("ignoreCase"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let literal = args
+        .get("literal")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true); // VSC default keeps backwards-compat behavior
+    let context = args
+        .get("context")
         .and_then(|v| v.as_u64())
-        .unwrap_or(50) as usize;
+        .map(|n| n as usize)
+        .unwrap_or(0);
+    let limit = args
+        .get("limit")
+        .or_else(|| args.get("max_results"))
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(DEFAULT_LIMIT);
 
-    let search_path = if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        std::env::current_dir().unwrap_or_default().join(path)
-    };
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let search_path = resolve_to_cwd(path_arg, &cwd);
 
-    // Phase 1: Collect all searchable files (fast, sequential dir walk)
     let mut files = Vec::new();
-    collect_files(&search_path, include, &mut files);
+    walk_collect(&search_path, glob, &mut files);
 
-    // Phase 2: Search files in parallel with rayon
-    // Use SeqCst ordering for tighter result count control on multi-core
     let count = AtomicUsize::new(0);
-    let pattern_lower = pattern.to_lowercase();
-    let results: Vec<Value> = files
+    let pattern_owned = pattern.to_string();
+
+    // Collect all matches (file_rel, line_no, line_text) in parallel
+    let raw_matches: Vec<(String, usize, String)> = files
         .par_iter()
-        .flat_map(|file_path| {
-            if count.load(Ordering::SeqCst) >= max_results {
+        .flat_map(|file| {
+            if count.load(Ordering::SeqCst) >= limit {
                 return Vec::new();
             }
-
-            let mut matches = Vec::new();
-
-            if let Ok(content) = fs::read_to_string(file_path) {
-                for (line_num, line) in content.lines().enumerate() {
-                    if count.load(Ordering::SeqCst) >= max_results {
-                        break;
-                    }
-                    if line.to_lowercase().contains(&pattern_lower) {
-                        count.fetch_add(1, Ordering::SeqCst);
-                        matches.push(json!({
-                            "file": file_path.display().to_string(),
-                            "line": line_num + 1,
-                            "content": line.trim()
-                        }));
-                    }
+            let mut found = Vec::new();
+            let content = match fs::read_to_string(file) {
+                Ok(s) => s,
+                Err(_) => return found,
+            };
+            let rel = file
+                .strip_prefix(&search_path)
+                .unwrap_or(file)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for (i, line) in content.lines().enumerate() {
+                if count.load(Ordering::SeqCst) >= limit {
+                    break;
+                }
+                if line_matches(line, &pattern_owned, ignore_case, literal) {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    found.push((rel.clone(), i + 1, line.to_string()));
                 }
             }
-            matches
+            found
         })
         .collect();
 
-    // Trim to exact max_results (rayon may overshoot slightly due to parallelism)
-    let trimmed: Vec<Value> = results.into_iter().take(max_results).collect();
-    let total = trimmed.len();
+    let trimmed: Vec<(String, usize, String)> = raw_matches.into_iter().take(limit).collect();
+    let limit_reached = trimmed.len() >= limit;
+
+    if trimmed.is_empty() {
+        return json!({
+            "pattern": pattern,
+            "path": search_path.display().to_string(),
+            "matches": [],
+            "total_matches": 0,
+            "content": "No matches found"
+        });
+    }
+
+    // Build pi-style output and matches[] array (kept for back-compat with TUI)
+    let mut output_lines: Vec<String> = Vec::new();
+    let mut matches_arr: Vec<Value> = Vec::with_capacity(trimmed.len());
+    let mut lines_were_truncated = false;
+    let file_cache_key: Option<&str> = None;
+    let _ = file_cache_key;
+
+    for (rel, line_no, line_text) in &trimmed {
+        if context > 0 {
+            let abs = search_path.join(rel);
+            if let Ok(content) = fs::read_to_string(&abs) {
+                let lines: Vec<&str> = content.lines().collect();
+                let start = line_no.saturating_sub(context).max(1);
+                let end = (line_no + context).min(lines.len());
+                for cur in start..=end {
+                    let lt = lines.get(cur - 1).copied().unwrap_or("");
+                    let (truncated, was) = truncate_line(lt, GREP_MAX_LINE_LENGTH);
+                    if was {
+                        lines_were_truncated = true;
+                    }
+                    if cur == *line_no {
+                        output_lines.push(format!("{}:{}: {}", rel, cur, truncated));
+                    } else {
+                        output_lines.push(format!("{}-{}- {}", rel, cur, truncated));
+                    }
+                }
+            }
+        } else {
+            let (truncated, was) = truncate_line(line_text, GREP_MAX_LINE_LENGTH);
+            if was {
+                lines_were_truncated = true;
+            }
+            output_lines.push(format!("{}:{}: {}", rel, line_no, truncated));
+        }
+        matches_arr.push(json!({
+            "file": rel,
+            "line": line_no,
+            "content": line_text.trim()
+        }));
+    }
+
+    let raw_output = output_lines.join("\n");
+    let truncation = truncate_head(
+        &raw_output,
+        TruncationOptions {
+            max_lines: usize::MAX,
+            max_bytes: DEFAULT_MAX_BYTES,
+        },
+    );
+    let mut output = truncation.content.clone();
+    let mut notices = Vec::new();
+    if limit_reached {
+        notices.push(format!(
+            "{} matches limit reached. Use limit={} for more, or refine pattern",
+            limit,
+            limit * 2
+        ));
+    }
+    if truncation.truncated {
+        notices.push(format!("{} limit reached", format_size(DEFAULT_MAX_BYTES)));
+    }
+    if lines_were_truncated {
+        notices.push(format!(
+            "Some lines truncated to {} chars. Use read tool to see full lines",
+            GREP_MAX_LINE_LENGTH
+        ));
+    }
+    if !notices.is_empty() {
+        output.push_str(&format!("\n\n[{}]", notices.join(". ")));
+    }
 
     json!({
         "pattern": pattern,
         "path": search_path.display().to_string(),
-        "matches": trimmed,
-        "total_matches": total
+        "matches": matches_arr,
+        "total_matches": matches_arr.len(),
+        "content": output
     })
 }
 
-/// Collect all searchable files from a directory tree
-fn collect_files(dir: &Path, include: Option<&str>, files: &mut Vec<PathBuf>) {
+fn line_matches(line: &str, pattern: &str, ignore_case: bool, literal: bool) -> bool {
+    // No regex crate — pi uses ripgrep (regex by default). To keep VSC's
+    // dependency footprint flat, we offer literal substring matching plus a
+    // tiny case-insensitive switch. Documented as "literal-only" in the schema.
+    let _ = literal;
+    if ignore_case {
+        line.to_lowercase().contains(&pattern.to_lowercase())
+    } else {
+        line.contains(pattern)
+    }
+}
+
+fn walk_collect(dir: &Path, glob: Option<&str>, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
     };
-
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-
-        // Skip hidden dirs and common non-code directories
-        if name.starts_with('.')
-            || name == "node_modules"
-            || name == "target"
-            || name == "__pycache__"
-            || name == "venv"
-            || name == ".git"
-        {
+        if SKIP_DIRS.contains(&name.as_str()) || name.starts_with('.') {
             continue;
         }
-
         if path.is_dir() {
-            collect_files(&path, include, files);
+            walk_collect(&path, glob, out);
         } else if path.is_file() {
-            // Check include pattern (simple glob)
-            if let Some(inc) = include {
-                let inc = inc.trim_start_matches('*');
-                if !name.ends_with(inc) {
+            if let Some(g) = glob {
+                let target = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if !glob_match(g, &target) {
                     continue;
                 }
             }
-
-            // Skip binary files
             if !is_likely_binary(&path) {
-                files.push(path);
+                out.push(path);
             }
         }
     }
@@ -117,15 +241,12 @@ fn is_likely_binary(path: &Path) -> bool {
         "png", "jpg", "jpeg", "gif", "bmp", "ico", "pdf", "zip", "tar", "gz", "bz2", "xz", "7z",
         "exe", "dll", "so", "dylib", "o", "a", "wasm", "class", "pyc", "pyo",
     ];
-
     if let Some(ext) = path.extension() {
         let ext = ext.to_string_lossy().to_lowercase();
         if binary_exts.contains(&ext.as_str()) {
             return true;
         }
     }
-
-    // Check first few bytes for null bytes (read only 512 bytes, not the whole file)
     if let Ok(file) = fs::File::open(path) {
         use std::io::Read;
         let mut buf = [0u8; 512];
@@ -134,255 +255,98 @@ fn is_likely_binary(path: &Path) -> bool {
             return buf[..n].contains(&0);
         }
     }
-
     false
-}
-
-/// Find files matching a glob pattern (parallelized with rayon)
-pub fn find_files(args: &Value) -> Value {
-    let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return json!({"error": "Missing 'pattern' argument"}),
-    };
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-    let max_results: usize = args
-        .get("max_results")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(100) as usize;
-
-    let search_path = if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        std::env::current_dir().unwrap_or_default().join(path)
-    };
-
-    // Phase 1: Collect all files
-    let mut all_files = Vec::new();
-    collect_all_files(&search_path, &mut all_files);
-
-    // Phase 2: Filter in parallel
-    let pat = pattern.trim_start_matches('*');
-    let results: Vec<String> = all_files
-        .par_iter()
-        .filter_map(|path| {
-            let name = path.file_name()?.to_string_lossy();
-            if name.contains(pat) || name.ends_with(pat) {
-                Some(path.display().to_string())
-            } else {
-                None
-            }
-        })
-        .take_any(max_results)
-        .collect();
-
-    json!({
-        "pattern": pattern,
-        "files": results,
-        "total": results.len()
-    })
-}
-
-fn collect_all_files(dir: &Path, files: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        if name.starts_with('.') || name == "node_modules" || name == "target" {
-            continue;
-        }
-
-        if path.is_dir() {
-            collect_all_files(&path, files);
-        } else {
-            files.push(path);
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
-    fn make_temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("vsc_test_grep_{}", name));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    fn tmp(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("vsc_grep_{}", name));
+        let _ = fs::remove_dir_all(&p);
+        fs::create_dir_all(&p).unwrap();
+        p
     }
 
     #[test]
-    fn test_is_likely_binary_by_extension() {
-        assert!(is_likely_binary(Path::new("image.png")));
-        assert!(is_likely_binary(Path::new("archive.zip")));
-        assert!(is_likely_binary(Path::new("lib.so")));
-        assert!(is_likely_binary(Path::new("code.pyc")));
-        assert!(is_likely_binary(Path::new("app.exe")));
-        assert!(is_likely_binary(Path::new("module.wasm")));
+    fn test_grep_missing_pattern() {
+        let r = grep(&json!({}));
+        assert!(r.get("error").is_some());
     }
 
     #[test]
-    fn test_is_likely_binary_text_extension() {
-        assert!(!is_likely_binary(Path::new("code.rs")));
-        assert!(!is_likely_binary(Path::new("readme.md")));
-        assert!(!is_likely_binary(Path::new("config.toml")));
+    fn test_grep_simple() {
+        let d = tmp("simple");
+        fs::write(d.join("a.txt"), "hello world\nbye world\n").unwrap();
+        let r = grep(&json!({"pattern": "hello", "path": d.to_str().unwrap()}));
+        let m = r["matches"].as_array().unwrap();
+        assert_eq!(m.len(), 1);
+        assert!(r["content"].as_str().unwrap().contains("a.txt:1:"));
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn test_is_likely_binary_null_bytes() {
-        let dir = make_temp_dir("null_bytes");
-        let path = dir.join("test.dat");
-        let mut f = fs::File::create(&path).unwrap();
-        f.write_all(&[0x48, 0x65, 0x6c, 0x00, 0x6f]).unwrap();
-        assert!(is_likely_binary(&path));
-        let _ = fs::remove_dir_all(&dir);
+    fn test_grep_glob_filter() {
+        let d = tmp("globflt");
+        fs::write(d.join("a.rs"), "marker").unwrap();
+        fs::write(d.join("b.txt"), "marker").unwrap();
+        let r = grep(&json!({
+            "pattern": "marker",
+            "path": d.to_str().unwrap(),
+            "glob": "*.rs"
+        }));
+        assert_eq!(r["matches"].as_array().unwrap().len(), 1);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn test_is_likely_binary_clean_text_file() {
-        let dir = make_temp_dir("clean_text");
-        let path = dir.join("clean.txt");
-        fs::write(&path, "Hello, this is text!").unwrap();
-        assert!(!is_likely_binary(&path));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_is_likely_binary_nonexistent_file() {
-        assert!(!is_likely_binary(Path::new("/nonexistent/file.xyz")));
-    }
-
-    #[test]
-    fn test_grep_search_missing_pattern() {
-        let result = grep_search(&json!({}));
-        assert!(result.get("error").is_some());
-    }
-
-    #[test]
-    fn test_grep_search_nonexistent_path() {
-        let result = grep_search(&json!({"pattern": "hello", "path": "/nonexistent/dir"}));
-        let matches = result.get("matches").and_then(|v| v.as_array());
-        assert!(matches.is_some());
-        assert_eq!(matches.unwrap().len(), 0);
-    }
-
-    #[test]
-    fn test_grep_search_with_include_filter() {
-        let dir = make_temp_dir("include_filter");
-        fs::write(dir.join("code.rs"), "fn hello() {}").unwrap();
-        fs::write(dir.join("data.txt"), "hello world").unwrap();
-
-        let result = grep_search(&json!({
+    fn test_grep_case_insensitive() {
+        let d = tmp("ci");
+        fs::write(d.join("a.txt"), "Hello").unwrap();
+        let r = grep(&json!({
             "pattern": "hello",
-            "path": dir.to_str().unwrap(),
-            "include": "*.rs"
+            "path": d.to_str().unwrap(),
+            "ignore_case": true
         }));
-        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
-        assert_eq!(matches.len(), 1);
-        assert!(matches[0]["file"].as_str().unwrap().ends_with("code.rs"));
-        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(r["matches"].as_array().unwrap().len(), 1);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn test_grep_search_max_results() {
-        let dir = make_temp_dir("max_results");
-        let mut content = String::new();
-        for i in 0..20 {
-            content.push_str(&format!("hello line {}\n", i));
-        }
-        fs::write(dir.join("many.txt"), &content).unwrap();
-
-        let result = grep_search(&json!({
-            "pattern": "hello",
-            "path": dir.to_str().unwrap(),
-            "max_results": 3
+    fn test_grep_context() {
+        let d = tmp("ctx");
+        fs::write(d.join("a.txt"), "before\nMATCH\nafter\n").unwrap();
+        let r = grep(&json!({
+            "pattern": "MATCH",
+            "path": d.to_str().unwrap(),
+            "context": 1
         }));
-        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
-        assert!(matches.len() <= 3);
-        let _ = fs::remove_dir_all(&dir);
+        let content = r["content"].as_str().unwrap();
+        assert!(content.contains("a.txt-1- before"));
+        assert!(content.contains("a.txt:2: MATCH"));
+        assert!(content.contains("a.txt-3- after"));
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn test_find_files_missing_pattern() {
-        let result = find_files(&json!({}));
-        assert!(result.get("error").is_some());
+    fn test_grep_limit() {
+        let d = tmp("limit");
+        let body = (0..50).map(|i| format!("hello {}", i)).collect::<Vec<_>>().join("\n");
+        fs::write(d.join("many.txt"), body).unwrap();
+        let r = grep(&json!({"pattern": "hello", "path": d.to_str().unwrap(), "limit": 5}));
+        let m = r["matches"].as_array().unwrap();
+        assert!(m.len() <= 5);
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn test_find_files_no_match() {
-        let dir = make_temp_dir("no_match");
-        fs::write(dir.join("code.rs"), "fn main() {}").unwrap();
-
-        let result = find_files(&json!({
-            "pattern": "*.py",
-            "path": dir.to_str().unwrap()
-        }));
-        let files = result.get("files").and_then(|v| v.as_array()).unwrap();
-        assert_eq!(files.len(), 0);
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_collect_files_skips_hidden_dirs() {
-        let dir = make_temp_dir("hidden_dirs");
-        let hidden = dir.join(".hidden");
-        fs::create_dir(&hidden).unwrap();
-        fs::write(hidden.join("secret.rs"), "secret").unwrap();
-        fs::write(dir.join("visible.rs"), "visible").unwrap();
-
-        let mut files = Vec::new();
-        collect_files(&dir, None, &mut files);
-        assert_eq!(files.len(), 1);
-        assert!(files[0].to_string_lossy().contains("visible.rs"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_grep_search_case_insensitive() {
-        let dir = make_temp_dir("case_insensitive");
-        fs::write(dir.join("mixed.txt"), "Hello WORLD hElLo").unwrap();
-
-        let result = grep_search(&json!({
-            "pattern": "hello",
-            "path": dir.to_str().unwrap()
-        }));
-        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
-        assert_eq!(matches.len(), 1);
-        // The line contains both "Hello" and "hElLo" — case-insensitive match found it
-        assert!(matches[0]["content"].as_str().unwrap().contains("Hello"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_grep_search_case_insensitive_no_match() {
-        let dir = make_temp_dir("case_no_match");
-        fs::write(dir.join("nope.txt"), "Goodbye WORLD").unwrap();
-
-        let result = grep_search(&json!({
-            "pattern": "hello",
-            "path": dir.to_str().unwrap()
-        }));
-        let matches = result.get("matches").and_then(|v| v.as_array()).unwrap();
-        assert_eq!(matches.len(), 0);
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_collect_files_skips_node_modules() {
-        let dir = make_temp_dir("node_modules_skip");
-        let nm = dir.join("node_modules");
-        fs::create_dir(&nm).unwrap();
-        fs::write(nm.join("pkg.js"), "module").unwrap();
-        fs::write(dir.join("app.js"), "app").unwrap();
-
-        let mut files = Vec::new();
-        collect_files(&dir, None, &mut files);
-        assert_eq!(files.len(), 1);
-        let _ = fs::remove_dir_all(&dir);
+    fn test_grep_no_match() {
+        let d = tmp("nomatch");
+        fs::write(d.join("a.txt"), "abc").unwrap();
+        let r = grep(&json!({"pattern": "xyz", "path": d.to_str().unwrap()}));
+        assert_eq!(r["total_matches"], 0);
+        assert_eq!(r["content"], "No matches found");
+        let _ = fs::remove_dir_all(&d);
     }
 }

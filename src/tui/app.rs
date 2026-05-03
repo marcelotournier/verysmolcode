@@ -603,7 +603,7 @@ impl App {
             } else {
                 self.messages
                     .push(DisplayMessage::User(format!("!{}", cmd)));
-                let result = crate::tools::git::run_shell(&serde_json::json!({"command": cmd}));
+                let result = crate::tools::bash::bash(&serde_json::json!({"command": cmd}));
                 let output = if result.get("success").and_then(|v| v.as_bool()) == Some(true) {
                     result["stdout"].as_str().unwrap_or("").trim().to_string()
                 } else if let Some(err) = result.get("error").and_then(|v| v.as_str()) {

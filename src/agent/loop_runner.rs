@@ -40,6 +40,9 @@ pub struct AgentLoop {
     startup_warnings: Vec<String>,
     pub todo: TodoList,
     pub search_grounding: bool,
+    /// Optional subagent allow-list. When set, only these tools are exposed
+    /// to the model and `task` itself is excluded (no recursive subagents).
+    subagent_allowed_tools: Option<Vec<String>>,
 }
 
 /// Max characters for a single tool result before truncation.
@@ -177,12 +180,28 @@ impl AgentLoop {
             startup_warnings,
             todo: TodoList::new(),
             search_grounding: false,
+            subagent_allowed_tools: None,
         })
+    }
+
+    /// Restrict the agent to a specific tool allow-list (used by `task`
+    /// subagents). Excludes `task` itself to prevent recursive fan-out.
+    pub fn set_subagent_mode(&mut self, allowed: Vec<&'static str>) {
+        let filtered: Vec<String> = allowed
+            .iter()
+            .filter(|n| **n != "task")
+            .map(|s| s.to_string())
+            .collect();
+        self.subagent_allowed_tools = Some(filtered);
     }
 
     /// Get tool declarations including MCP tools
     fn get_tools(&self, read_only: bool) -> Vec<ToolDeclaration> {
-        let mut tools = if read_only {
+        // Subagent allow-list takes precedence over the read-only flag
+        let mut tools = if let Some(allowed) = &self.subagent_allowed_tools {
+            let allowed_refs: Vec<&str> = allowed.iter().map(|s| s.as_str()).collect();
+            ToolRegistry::declarations_for(&allowed_refs)
+        } else if read_only {
             ToolRegistry::read_only_declarations()
         } else {
             ToolRegistry::declarations()
@@ -511,7 +530,10 @@ impl AgentLoop {
                 }
 
                 // Snapshot file before mutation for undo support
-                if matches!(call.name.as_str(), "write_file" | "edit_file") {
+                if matches!(
+                    call.name.as_str(),
+                    "write" | "edit" | "write_file" | "edit_file"
+                ) {
                     if let Some(path) = call.args.get("path").and_then(|v| v.as_str()) {
                         self.undo_history
                             .snapshot_before_write(std::path::Path::new(path));
@@ -543,7 +565,7 @@ impl AgentLoop {
                 // Track if files were modified (for critic decision)
                 if matches!(
                     call.name.as_str(),
-                    "write_file" | "edit_file" | "run_command"
+                    "write" | "edit" | "bash" | "write_file" | "edit_file" | "run_command"
                 ) {
                     self.files_modified = true;
                 }
@@ -557,8 +579,10 @@ impl AgentLoop {
                 // Truncate large tool results before adding to conversation history
                 let result = truncate_tool_result(&result);
 
-                // For read_image, include the InlineData part so Gemini can see it
-                if call.name == "read_image" {
+                // For read_image / read returning an image, include InlineData
+                if (call.name == "read_image" || call.name == "read")
+                    && result.get("inline_data").is_some()
+                {
                     if let Some(inline) = result.get("inline_data") {
                         if let (Some(mime), Some(data)) = (
                             inline.get("mime_type").and_then(|v| v.as_str()),
@@ -1137,7 +1161,7 @@ pub fn is_rate_limit_error(e: &str) -> bool {
 /// Check if a tool call looks dangerous
 pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
     match name {
-        "run_command" => {
+        "bash" | "run_command" => {
             if let Some(cmd) = args.get("command").and_then(|v| v.as_str()) {
                 let dangerous = [
                     "rm -rf",
@@ -1183,7 +1207,7 @@ pub fn is_dangerous_tool_call(name: &str, args: &serde_json::Value) -> bool {
                 false
             }
         }
-        "write_file" | "edit_file" => {
+        "write" | "edit" | "write_file" | "edit_file" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 return crate::tools::file_ops::BLOCKED_PATH_PREFIXES
                     .iter()
