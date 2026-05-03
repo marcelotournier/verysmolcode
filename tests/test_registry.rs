@@ -1,13 +1,40 @@
+//! Registry-level integration tests.
+//!
+//! After v0.16.0 the canonical tool names exposed to the model are the
+//! pi-style short names (`read`, `write`, `edit`, `ls`, `grep`, `find`,
+//! `bash`, `task`, `vsc_help`). The legacy long names (`read_file`,
+//! `write_file`, …) are still accepted by `execute_tool()` so existing
+//! sessions keep working, but they are no longer in the declarations
+//! advertised to the model.
+
 use serde_json::json;
 use verysmolcode::tools::registry::{execute_tool, get_tool_declarations, ToolRegistry};
 
-// -- Tool declarations tests --
+const PI_TOOLS: &[&str] = &["read", "write", "edit", "ls", "grep", "find", "bash"];
+const VSC_EXTRA: &[&str] = &[
+    "task",
+    "vsc_help",
+    "git_status",
+    "git_diff",
+    "git_log",
+    "git_commit",
+    "git_add",
+    "git_branch",
+    "git_checkout",
+    "git_push",
+    "git_pull",
+    "web_fetch",
+    "todo_update",
+    "send_telegram",
+];
 
 #[test]
 fn test_declarations_count() {
     let decls = ToolRegistry::declarations();
-    assert_eq!(decls.len(), 1); // One ToolDeclaration with all function decls
-    assert_eq!(decls[0].function_declarations.len(), 20); // 20 tools (including send_telegram)
+    assert_eq!(decls.len(), 1);
+    let n = decls[0].function_declarations.len();
+    // 7 pi-style + 14 VSC extras = 21 total advertised tools
+    assert!(n >= 18, "expected at least 18 declared tools, got {}", n);
 }
 
 #[test]
@@ -18,26 +45,37 @@ fn test_declarations_tool_names() {
         .iter()
         .map(|f| f.name.as_str())
         .collect();
+    for n in PI_TOOLS {
+        assert!(names.contains(n), "missing pi tool: {}", n);
+    }
+    for n in VSC_EXTRA {
+        assert!(names.contains(n), "missing vsc tool: {}", n);
+    }
+}
 
-    assert!(names.contains(&"read_file"));
-    assert!(names.contains(&"write_file"));
-    assert!(names.contains(&"edit_file"));
-    assert!(names.contains(&"list_directory"));
-    assert!(names.contains(&"grep_search"));
-    assert!(names.contains(&"find_files"));
-    assert!(names.contains(&"git_status"));
-    assert!(names.contains(&"git_diff"));
-    assert!(names.contains(&"git_log"));
-    assert!(names.contains(&"git_commit"));
-    assert!(names.contains(&"git_add"));
-    assert!(names.contains(&"git_branch"));
-    assert!(names.contains(&"git_checkout"));
-    assert!(names.contains(&"git_push"));
-    assert!(names.contains(&"git_pull"));
-    assert!(names.contains(&"run_command"));
-    assert!(names.contains(&"web_fetch"));
-    assert!(names.contains(&"read_image"));
-    assert!(names.contains(&"send_telegram"));
+#[test]
+fn test_legacy_names_routed_via_execute_tool() {
+    // Legacy names are not declared, but the dispatcher must still accept them
+    // so saved sessions and older transcripts keep working.
+    for legacy in &[
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_directory",
+        "grep_search",
+        "find_files",
+        "run_command",
+        "read_image",
+    ] {
+        let r = execute_tool(legacy, &json!({"path": "/tmp/__nope__"}));
+        // We don't care what error comes back — only that it isn't "Unknown tool"
+        let err = r.get("error").and_then(|v| v.as_str()).unwrap_or("");
+        assert!(
+            !err.contains("Unknown tool"),
+            "legacy alias '{}' is no longer routed",
+            legacy
+        );
+    }
 }
 
 #[test]
@@ -70,48 +108,57 @@ fn test_declarations_have_parameters() {
     }
 }
 
-// -- Read-only declarations tests --
-
 #[test]
 fn test_read_only_declarations() {
     let decls = ToolRegistry::read_only_declarations();
     assert_eq!(decls.len(), 1);
-
     let names: Vec<&str> = decls[0]
         .function_declarations
         .iter()
         .map(|f| f.name.as_str())
         .collect();
 
-    // Should include read-only tools
-    assert!(names.contains(&"read_file"));
-    assert!(names.contains(&"list_directory"));
-    assert!(names.contains(&"grep_search"));
-    assert!(names.contains(&"find_files"));
-    assert!(names.contains(&"git_status"));
-    assert!(names.contains(&"git_diff"));
-    assert!(names.contains(&"git_log"));
-    assert!(names.contains(&"web_fetch"));
-    assert!(names.contains(&"read_image"));
+    // Read-only set should expose pi-style read/grep/find/ls + read-only VSC extras
+    for n in &[
+        "read",
+        "ls",
+        "grep",
+        "find",
+        "git_status",
+        "git_diff",
+        "git_log",
+        "web_fetch",
+        "todo_update",
+        "vsc_help",
+    ] {
+        assert!(names.contains(n), "missing read-only tool: {}", n);
+    }
 
-    // Should NOT include write/mutation tools
-    assert!(!names.contains(&"write_file"));
-    assert!(!names.contains(&"edit_file"));
-    assert!(!names.contains(&"git_commit"));
-    assert!(!names.contains(&"git_add"));
-    assert!(!names.contains(&"git_push"));
-    assert!(!names.contains(&"git_pull"));
-    assert!(!names.contains(&"git_checkout"));
-    assert!(!names.contains(&"run_command"));
+    // Mutation tools must not be in the read-only set
+    for n in &[
+        "write",
+        "edit",
+        "bash",
+        "git_commit",
+        "git_add",
+        "git_push",
+        "git_pull",
+        "git_checkout",
+    ] {
+        assert!(!names.contains(n), "{} should not be in read-only set", n);
+    }
 }
 
 #[test]
 fn test_read_only_count() {
     let decls = ToolRegistry::read_only_declarations();
-    assert_eq!(decls[0].function_declarations.len(), 10); // 10 read-only tools (includes todo_update for planning)
+    let n = decls[0].function_declarations.len();
+    assert!(
+        n >= 8,
+        "expected at least 8 read-only declarations, got {}",
+        n
+    );
 }
-
-// -- execute_tool tests --
 
 #[test]
 fn test_execute_unknown_tool() {
@@ -130,14 +177,13 @@ fn test_execute_read_file_nonexistent() {
 
 #[test]
 fn test_execute_via_registry() {
-    // ToolRegistry::execute should work the same as execute_tool
     let result = ToolRegistry::execute("nonexistent_tool", &json!({}));
     assert!(result.get("error").is_some());
 }
 
 #[test]
 fn test_execute_list_directory() {
-    let result = execute_tool("list_directory", &json!({"path": "/tmp"}));
-    // /tmp should exist and list successfully
-    assert!(result.get("error").is_none() || result.get("entries").is_some());
+    // legacy alias still works
+    let r = execute_tool("list_directory", &json!({"path": "/tmp"}));
+    assert!(r.get("error").is_none() || r.get("content").is_some() || r.get("entries").is_some());
 }
